@@ -1,0 +1,190 @@
+.dashboard-home .dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.dashboard-card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  min-height: 112px;
+}
+
+.dashboard-card:hover {
+  border-color: #c5d6cc;
+  box-shadow: var(--shadow);
+  transform: translateY(-2px);
+}
+
+.dashboard-card.card-main {
+  grid-column: span 3;
+  grid-row: span 2;
+  background: linear-gradient(145deg, var(--coral) 0%, #d45b40 100%);
+  color: #fff9f0;
+  border-color: transparent;
+  min-height: 240px;
+}
+
+.dashboard-card.card-medium {
+  grid-column: span 3;
+}
+
+.dashboard-card.card-small {
+  grid-column: span 2;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  min-height: 96px;
+}
+
+.card-main .card-content {
+  display: flex;
+  gap: 18px;
+  flex: 1;
+}
+
+.card-icon {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid var(--mint);
+  color: var(--teal);
+}
+
+.card-main .card-icon {
+  width: 56px;
+  height: 56px;
+  background: rgba(255, 253, 248, 0.16);
+  color: #fffdf8;
+}
+
+.card-medium.available {
+  background: linear-gradient(145deg, var(--teal) 0%, var(--teal-deep) 100%);
+  color: #fffdf8;
+  border-color: transparent;
+}
+
+.card-medium.available .card-icon {
+  background: rgba(255, 253, 248, 0.16);
+  color: #fffdf8;
+}
+
+.card-info { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.card-label { font-size: 13px; opacity: 0.9; margin-bottom: 6px; display: block; }
+
+.card-value,
+.card-big-value {
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 700;
+  line-height: 1;
+  margin: 0 0 6px;
+}
+
+.card-medium h3,
+.card-small h4 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  color: var(--ink);
+}
+
+.card-medium.available h3,
+.card-medium.available .card-detail,
+.card-medium.available .card-big-value,
+.card-medium.available .card-footer {
+  color: #fffdf8;
+}
+
+.card-detail,
+.card-status {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.card-main .card-detail { color: #ffe5dc; margin-bottom: 12px; }
+
+.card-metric {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.metric-badge {
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fffdf8;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.metric-text { font-size: 13px; opacity: 0.92; }
+
+.card-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.card-medium .card-footer {
+  width: 100%;
+  border-top: 1px solid var(--line);
+  color: var(--teal);
+}
+
+.card-medium.available .card-footer { border-top-color: rgba(255, 253, 248, 0.18); }
+
+.card-small.alert .card-icon {
+  background: transparent;
+  border: 1px solid var(--danger-line);
+  color: var(--coral);
+}
+
+.alert-dot {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 10px;
+  height: 10px;
+  background: var(--coral);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(229, 107, 79, 0.18);
+}
+
+.dashboard-home .card-note {
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+@media (max-width: 1100px) {
+  .dashboard-home .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-card.card-main,
+  .dashboard-card.card-medium,
+  .dashboard-card.card-small { grid-column: span 1; grid-row: auto; }
+  .dashboard-card.card-main { grid-column: span 2; min-height: 0; }
+}
+
+@media (max-width: 640px) {
+  .dashboard-home .dashboard-grid { grid-template-columns: 1fr; }
+  .dashboard-card.card-main { grid-column: span 1; }
+  .card-main .card-content { flex-direction: column; }
+  .dashboard-card.card-small { min-height: 0; }
+}
