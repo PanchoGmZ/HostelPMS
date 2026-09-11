@@ -21,6 +21,7 @@ import { useAuth } from '../../context/useAuth'
 import { loadSettings, saveSettingItem, saveSettings, toggleSettingItem } from '../../services/settings/settingsService'
 import { establishmentSchema, settingItemSchema } from '../../schemas/settingsSchema'
 import type { EstablishmentSettings, SettingItem } from '../../types/settings'
+import { getCurrentBackendUser } from '../../services/api/backendService'
 
 type SettingType = 'ratePlans' | 'bookingChannels' | 'promotions'
 
@@ -53,6 +54,23 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  const [diagnosticLoading, setDiagnosticLoading] = useState(false)
+  const [diagnosticResult, setDiagnosticResult] = useState<string | null>(null)
+
+  const handleTestBackend = async () => {
+    setDiagnosticLoading(true)
+    setDiagnosticResult(null)
+    setError(null)
+    try {
+      const res = await getCurrentBackendUser()
+      setDiagnosticResult(`Backend conectado correctamente.\nUsuario: ${res.email || 'N/A'}\nUID: ${res.uid}\nRoles: ${JSON.stringify(res.roles)}`)
+    } catch (err: any) {
+      setError(`Error backend: ${err.message}`)
+    } finally {
+      setDiagnosticLoading(false)
+    }
+  }
 
   const [activeTab, setActiveTab] = useState<Tab>('establishment')
   const [itemModal, setItemModal] = useState<{ type: SettingType; item?: SettingItem } | null>(null)
@@ -159,7 +177,24 @@ export function SettingsPage() {
           <h1>Configuración</h1>
           <p>Define los datos y reglas operativas del establecimiento.</p>
         </div>
+        {session?.roles?.[establishmentId!] === 'admin' && (
+          <div className="header-actions">
+            <button 
+              className="btn-secondary" 
+              onClick={handleTestBackend}
+              disabled={diagnosticLoading}
+            >
+              {diagnosticLoading ? 'Probando...' : 'Probar conexión backend'}
+            </button>
+          </div>
+        )}
       </header>
+
+      {diagnosticResult && (
+        <div className="form-success" style={{ whiteSpace: 'pre-wrap', marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '4px' }}>
+          {diagnosticResult}
+        </div>
+      )}
 
       {error && (
         <div className="form-error">
