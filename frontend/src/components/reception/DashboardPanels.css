@@ -1,0 +1,244 @@
+.dashboard-panel {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(33, 48, 45, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.panel-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--teal-deep);
+  background: var(--mint);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.panel-count.success-text {
+  background: transparent;
+  color: var(--ok);
+}
+
+.panel-content {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.panel-empty {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 20px;
+}
+
+.panel-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.panel-card:hover {
+  border-color: var(--line-dark);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+}
+
+.card-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.card-time {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--warning-dark);
+}
+
+.card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-guest-name {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.card-location {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.panel-action-btn {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.checkin-btn {
+  background: var(--mint);
+  color: var(--teal-deep);
+}
+
+.checkin-btn:hover {
+  background: #d1fae5;
+}
+
+.assign-btn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.assign-btn:hover {
+  background: #fde68a;
+}
+
+.checkout-ok-btn {
+  background: var(--paper);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.checkout-ok-btn:hover {
+  border-color: var(--ink);
+}
+
+.checkout-debt-btn {
+  background: linear-gradient(135deg, var(--coral) 0%, #d45b40 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(229, 107, 79, 0.28);
+}
+
+.checkout-debt-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(229, 107, 79, 0.35);
+}
+
+.outline-btn {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.outline-btn:hover {
+  border-color: var(--ink);
+}
+
+.panel-footer {
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  text-align: center;
+}
+
+.text-link {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.text-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+/* Pending Styles */
+.pending-panel {
+  border-left: 4px solid var(--warning);
+}
+
+.pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pending-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.pending-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pending-icon.cleaning {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.pending-icon.maintenance {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.pending-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pending-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.pending-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}

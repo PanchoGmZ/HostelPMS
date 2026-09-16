@@ -9,10 +9,11 @@ export async function searchGuests(establishmentId: string, text: string): Promi
   const snapshot = await getDocs(query(collection(db, path(establishmentId)), ...constraints))
   return snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) as Guest[]
 }
-export async function saveGuest(establishmentId: string, guest: Omit<Guest, 'id' | 'searchName'>, guestId?: string) {
+export async function saveGuest(establishmentId: string, guest: Omit<Guest, 'id' | 'searchName'>, guestId?: string): Promise<string> {
   const reference = guestId ? doc(db, path(establishmentId), guestId) : doc(collection(db, path(establishmentId)))
   const searchName = `${guest.firstName} ${guest.lastName}`.trim().toLowerCase()
   const payload = { ...guest, searchName, updatedAt: serverTimestamp() }
   if (guestId) await updateDoc(reference, payload)
   else await setDoc(reference, { ...payload, createdAt: serverTimestamp() })
+  return reference.id
 }

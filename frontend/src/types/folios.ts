@@ -35,10 +35,11 @@ export interface Folio {
 export interface AddConsumptionPayload {
   establishmentId: string
   stayId: string
-  description: string
-  quantity: number
-  unitPrice: number
-  productId?: string | null
+  items: { productId: string; quantity: number }[]
+  payNow?: {
+    method: 'cash' | 'card' | 'transfer' | 'qr'
+    reference?: string
+  }
 }
 
 export type AddChargePayload = AddConsumptionPayload
@@ -52,5 +53,3 @@ export interface RecordPaymentPayload {
 }
 
 export type ProcessPaymentPayload = RecordPaymentPayload
-
-

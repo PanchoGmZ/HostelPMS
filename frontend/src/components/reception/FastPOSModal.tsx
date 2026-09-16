@@ -63,19 +63,17 @@ export function FastPOSModal({
       setFormError('La cantidad debe ser mayor a 0.')
       return
     }
-
-    const description = notes.trim()
-      ? `${selectedProduct.name} (${notes.trim()})`
-      : selectedProduct.name
+    if (selectedProduct.currentStock < quantity) {
+      setFormError(`Stock insuficiente. Disponible: ${selectedProduct.currentStock}`)
+      return
+    }
 
     setSubmitting(true)
     try {
       await addChargeToFolio({
         establishmentId,
         stayId: stay.id,
-        description,
-        quantity,
-        unitPrice,
+        items: [{ productId: selectedProduct.id, quantity }],
       })
 
       onSuccess(`Consumo de ${quantity}x ${selectedProduct.name} cargado al folio con éxito.`)

@@ -1,4 +1,5 @@
-import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore'
+import { collection, getDocs, query, orderBy, where, documentId } from 'firebase/firestore'
+import { apiPost } from '../api/apiClient'
 
 import { db } from '../firebase/config'
 import type { DailySummary, ReportMetrics } from '../../types/reports'
@@ -10,27 +11,62 @@ export async function loadReports(
   limitDays = 30
 ): Promise<{ metrics: ReportMetrics; summaries: DailySummary[] }> {
   const root = base(establishmentId)
+  
+  const today = new Date()
+  const todayStr = today.toISOString().split('T')[0]
+  const pastDate = new Date(today)
+  pastDate.setDate(pastDate.getDate() - limitDays)
+  const fromDateStr = pastDate.toISOString().split('T')[0]
 
-  const [reservations, stays, summaries] = await Promise.all([
-    getDocs(collection(db, `${root}/reservations`)),
-    getDocs(collection(db, `${root}/stays`)),
-    getDocs(
-      query(collection(db, `${root}/dailySummaries`), orderBy('__name__', 'desc'), limit(limitDays))
-    ),
-  ])
+  let summaries: DailySummary[] = []
+  let activeStaysCount = -1
 
-  const summaryData = summaries.docs.map((item) => ({ id: item.id, ...item.data() })) as DailySummary[]
+  try {
+    const sumSnapshot = await getDocs(
+      query(
+        collection(db, `${root}/dailySummaries`),
+        where(documentId(), '>=', fromDateStr),
+        where(documentId(), '<=', todayStr),
+        orderBy(documentId(), 'asc')
+      )
+    )
+    summaries = sumSnapshot.docs.map((item) => ({ id: item.id, ...item.data() })).reverse() as DailySummary[]
+  } catch (err) {
+    console.error('Error fetching summaries:', err)
+  }
+
+  try {
+    const staysSnapshot = await getDocs(
+      query(collection(db, `${root}/stays`), where('status', '==', 'active'))
+    )
+    activeStaysCount = staysSnapshot.size
+  } catch (err) {
+    console.error('Error fetching active stays:', err)
+  }
 
   return {
     metrics: {
-      reservations: reservations.size,
-      activeStays: stays.docs.filter((item) => item.data().status === 'active').length,
-      // folios path is establishments/{id}/folios (not under stays)
-      openFolios: 0, // Note: loaded separately if needed, folios are at establishments/{id}/folios
-      revenue: summaryData.reduce((total, item) => total + (item.revenue ?? 0), 0),
-      // occupancy from most recent summary day
-      occupancy: summaryData[0]?.occupancy ?? 0,
+      reservations: summaries.length > 0 ? summaries.reduce((acc, curr) => acc + (curr.reservations ?? 0), 0) : -1,
+      activeStays: activeStaysCount,
+      openFolios: 0,
+      revenue: summaries.length > 0 ? summaries.reduce((acc, curr) => acc + (curr.revenue ?? 0), 0) : -1,
+      occupancy: summaries.length > 0 ? (summaries[0]?.occupancy ?? 0) : -1,
     },
-    summaries: summaryData,
+    summaries,
+  }
+}
+
+export async function generateDailySummaryOnDemand(establishmentId: string) {
+  try {
+    const tzDateStr = new Date().toLocaleString("en-US", { timeZone: "America/La_Paz" })
+    const d = new Date(tzDateStr)
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
+    const date = `${yyyy}-${mm}-${dd}`
+
+    await apiPost('/api/generateDailySummaryOnDemand', { establishmentId, date })
+  } catch (err: any) {
+    throw new Error(err.message || 'Error al generar resumen diario')
   }
 }

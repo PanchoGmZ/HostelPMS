@@ -2,16 +2,20 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import {
   AlertTriangle,
   CheckCircle2,
-  Filter,
   History,
   Info,
   Package,
+  Pencil,
   Plus,
   Search,
   ShieldCheck,
   ShoppingCart,
   Tag,
   X,
+  LayoutGrid,
+  List,
+  Clock,
+  CircleCheck
 } from 'lucide-react'
 
 import { useAuth } from '../../context/useAuth'
@@ -125,17 +129,26 @@ export function InventoryPage() {
 
   return (
     <div className="dashboard-page inventory-page">
-      <header className="page-header">
+      <header className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <span className="kicker">Productos y stock</span>
-          <h1>Inventario</h1>
-          <p>Catálogo de existencias, control de stock mínimo y registro de compras de insumos.</p>
+          <span className="kicker" style={{ color: 'var(--muted)', fontSize: '11px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px' }}>
+            INVENTARIO Y SUMINISTROS 
+            <span style={{ color: '#d1d5db' }}>•</span>
+            {products.length} PRODUCTOS REGISTRADOS
+            <span style={{ color: '#d1d5db' }}>•</span>
+            <span style={{ color: '#10b981', background: '#ecfdf5', padding: '2px 6px', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <CircleCheck size={10} /> SINCRONIZADO
+            </span>
+          </span>
+          <h1 style={{ margin: '0 0 4px 0', fontSize: '28px', color: 'var(--ink)' }}>Inventario</h1>
+          <p style={{ margin: 0, color: 'var(--muted)', fontSize: '14px' }}>Catálogo de existencias, control de stock mínimo y registro de compras de insumos.</p>
         </div>
-        <div className="page-actions">
+        <div className="page-actions" style={{ display: 'flex', gap: '12px' }}>
           <button
             className="secondary-button compact-button"
             type="button"
             onClick={() => setShowDirectPurchaseModal(true)}
+            style={{ background: 'white' }}
           >
             <ShoppingCart size={16} /> Registrar compra
           </button>
@@ -143,11 +156,64 @@ export function InventoryPage() {
             className="primary-button compact-button"
             type="button"
             onClick={() => setEditor({ draft: emptyDraft })}
+            style={{ background: '#f97316', borderColor: '#f97316' }}
           >
             <Plus size={18} /> Nuevo producto
           </button>
         </div>
       </header>
+
+      {error && (
+        <div className="form-error">
+          <AlertTriangle size={16} style={{ display: 'inline', marginRight: '6px' }} />
+          {error}
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="stay-notice success" style={{ marginBottom: '16px' }}>
+          <CheckCircle2 size={16} />
+          {successMessage}
+        </div>
+      )}
+
+      <div className="notice-bar">
+        <p>
+          <ShieldCheck size={18} color="#d97706" />
+          Las transacciones de stock e ingreso de compras son procesadas y validadas por el backend (Cloud Functions).
+        </p>
+        <div className="atomic-badge">
+          <span style={{ width: '6px', height: '6px', background: '#d97706', borderRadius: '50%' }} />
+          Transacción atómica
+        </div>
+      </div>
+
+      <div className="inventory-metrics">
+        <div className="metric-card">
+          <span>Total Productos</span>
+          <strong>{products.length} <small className="metric-status-green">Activos</small></strong>
+          <Package className="metric-icon-top" size={20} />
+        </div>
+        <div className="metric-card">
+          <span>Stock Bajo / Crítico</span>
+          <strong>{lowStockCount} <small className="metric-status-yellow">por reponer</small></strong>
+          <AlertTriangle className="metric-icon-top" size={20} color="#d97706" />
+        </div>
+        <div className="metric-card">
+          <span>Valor Estimado</span>
+          <strong>{totalInventoryValue} <small style={{ color: 'var(--muted)' }}>BOB</small></strong>
+          <Tag className="metric-icon-top" size={20} />
+        </div>
+        <div className="metric-card">
+          <span>Última Entrada</span>
+          <strong>{purchases.length > 0 ? (
+            <span style={{ fontSize: '15px' }}>{formatDate(purchases[0].createdAt)}</span>
+          ) : (
+            <span style={{ fontSize: '15px', color: 'var(--muted)' }}>Sin entradas</span>
+          )}</strong>
+          <Clock className="metric-icon-top" size={20} />
+        </div>
+      </div>
 
       {error && (
         <div className="form-error">
@@ -163,36 +229,7 @@ export function InventoryPage() {
         </div>
       )}
 
-      <div className="stay-notice">
-        <ShieldCheck size={18} />
-        <span>
-          Las entradas de compras procesan y actualizan el stock real de forma segura desde el backend (Cloud Functions).
-        </span>
-      </div>
 
-      <div className="kpi-strip">
-        <div>
-          <div className="product-top">
-            <span>Total Productos</span>
-            <Package size={18} color="var(--teal)" />
-          </div>
-          <strong>{products.length}</strong>
-        </div>
-        <div className={lowStockCount > 0 ? 'is-debt' : ''}>
-          <div className="product-top">
-            <span>Stock Bajo</span>
-            <AlertTriangle size={18} color={lowStockCount > 0 ? 'var(--coral)' : 'var(--muted)'} />
-          </div>
-          <strong>{lowStockCount}</strong>
-        </div>
-        <div>
-          <div className="product-top">
-            <span>Valor Estimado del Stock</span>
-            <Tag size={18} color="var(--teal)" />
-          </div>
-          <strong>{totalInventoryValue} BOB</strong>
-        </div>
-      </div>
 
       <div className="module-tabs">
         <button
@@ -215,48 +252,42 @@ export function InventoryPage() {
       {activeTab === 'products' && (
         <>
           {/* Toolbar */}
-          <div className="guest-toolbar" style={{ flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 250px' }}>
+          <div className="inventory-toolbar">
+            <div className="toolbar-search">
               <Search size={16} color="var(--muted)" />
               <input
                 type="text"
-                placeholder="Buscar por nombre de producto..."
+                placeholder="Buscar por producto, insumo o código..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Filter size={15} color="var(--muted)" />
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  style={{
-                    padding: '6px 10px',
-                    borderRadius: '6px',
-                    border: '1px solid var(--line)',
-                    background: 'var(--white)',
-                    fontSize: '12px',
-                  }}
-                >
-                  <option value="all">Todas las categorías</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="toolbar-filters">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="all">Todas las categorías</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
 
               <select
-                className="filter-select"
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
               >
                 <option value="all">Todos los estados</option>
-                <option value="low">Solo Stock Bajo</option>
+                <option value="low">Stock Bajo / Crítico</option>
                 <option value="available">Disponibles</option>
               </select>
+
+              <div className="layout-toggle">
+                <button type="button" className="active"><LayoutGrid size={16} /></button>
+                <button type="button"><List size={16} /></button>
+              </div>
             </div>
           </div>
 
@@ -278,53 +309,79 @@ export function InventoryPage() {
               <p>No se encontraron productos con el filtro aplicado.</p>
             </div>
           ) : (
-            <div className="product-grid">
+            <div className="inv-product-grid">
               {filteredProducts.map((product) => {
                 const category = categories.find((c) => c.id === product.categoryId)
-                const isLow = product.lowStock || (product.currentStock <= product.minimumStock && product.minimumStock > 0)
+                const currentStock = product.currentStock ?? 0;
+                const minStock = product.minimumStock ?? 0;
+                const isLow = product.lowStock || (currentStock <= minStock && minStock > 0)
+                const isZero = currentStock === 0;
+                
+                const maxLevel = minStock > 0 ? minStock * 2 : (currentStock === 0 ? 1 : currentStock);
+                const progressPercent = Math.min((currentStock / (maxLevel || 1)) * 100, 100);
+                
+                const statusClass = isZero ? 'none' : isLow ? 'low' : 'ok';
+                const statusText = isZero ? 'Sin stock' : isLow ? 'Stock bajo' : 'Disponible';
+                const progressText = isZero 
+                  ? `0 de ${minStock} min. (Agotado)` 
+                  : (currentStock >= minStock && minStock > 0) 
+                    ? 'Existencia óptima' 
+                    : `${currentStock} de ${minStock} requeridas`;
 
                 return (
-                  <article className={`product-card ${isLow ? 'low-stock' : ''}`} key={product.id}>
-                    <div className="product-top">
-                      <span className="product-icon">
-                        <Package size={18} />
-                      </span>
-                      <span
-                        className="stock-label"
-                        style={{
-                          background: isLow ? '#fff0eb' : '#eaf6ed',
-                          color: isLow ? '#a94635' : '#1e6631',
-                          fontWeight: 600,
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                        }}
-                      >
-                        {isLow ? 'Stock bajo' : 'Disponible'}
-                      </span>
-                    </div>
-                    <h2>{product.name}</h2>
-                    <small>
-                      {category ? category.name : 'Sin categoría'} · Unidad: {product.unit}
-                    </small>
-                    <div className="product-numbers">
-                      <div>
-                        <span>Stock Actual</span>
-                        <strong style={{ color: isLow ? 'var(--coral)' : 'var(--ink)' }}>
-                          {product.currentStock ?? 0}
-                        </strong>
+                  <article className="inv-product-card" key={product.id}>
+                    <div className="card-header">
+                      <div className="card-header-left">
+                        <div className="product-icon-box">
+                          <Package size={20} />
+                        </div>
+                        <div className="product-title">
+                          <strong>{product.name}</strong>
+                          <small>{category ? category.name : 'Bebidas'} • Unidad: {product.unit}</small>
+                        </div>
                       </div>
+                      <div className={`stock-badge ${statusClass}`}>
+                        <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor' }} />
+                        {statusText}
+                      </div>
+                    </div>
+
+                    <div className="stock-progress-area">
+                      <div className="stock-numbers">
+                        <div>
+                          <span>STOCK ACTUAL</span>
+                          <strong style={{ color: isZero ? 'var(--coral)' : isLow ? '#d97706' : 'var(--ink)' }}>
+                            {currentStock} <small style={{ fontSize: '13px', color: 'var(--muted)' }}>{currentStock === 1 ? 'unidad' : 'unidades'}</small>
+                          </strong>
+                        </div>
+                        <div>
+                          <span>MÍNIMO</span>
+                          <strong>{minStock} u</strong>
+                        </div>
+                      </div>
+                      <div className="progress-bar-container">
+                        <div className={`progress-bar-fill ${statusClass}`} style={{ width: `${progressPercent}%` }} />
+                      </div>
+                      <div className="progress-text">
+                        <span style={{ color: isZero ? 'var(--coral)' : isLow ? '#d97706' : '#10b981' }}>{progressText}</span>
+                        <span>{Math.round(progressPercent)}% nivel</span>
+                      </div>
+                    </div>
+
+                    <div className="price-area">
                       <div>
-                        <span>P. Venta</span>
+                        <span>Precio de venta</span>
                         <strong>{product.salePrice ?? 0} BOB</strong>
                       </div>
                       <div>
-                        <span>Stock Mín.</span>
-                        <strong>{product.minimumStock ?? 0}</strong>
+                        <span>Costo estimado</span>
+                        <strong>{product.costPrice ?? 0} BOB</strong>
                       </div>
                     </div>
-                    <div className="product-actions">
+
+                    <div className="card-actions">
                       <button
-                        className="secondary-button"
+                        className="btn-edit"
                         type="button"
                         onClick={() =>
                           setEditor({
@@ -341,14 +398,14 @@ export function InventoryPage() {
                           })
                         }
                       >
-                        Editar
+                        <Pencil size={15} /> Editar
                       </button>
                       <button
-                        className="small-button"
+                        className="btn-add"
                         type="button"
                         onClick={() => setPurchaseProduct(product)}
                       >
-                        <ShoppingCart size={15} /> Compra
+                        <Plus size={15} /> Entrada
                       </button>
                     </div>
                   </article>
@@ -356,6 +413,13 @@ export function InventoryPage() {
               })}
             </div>
           )}
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--line)' }}>
+            <span style={{ color: 'var(--muted)', fontSize: '12px' }}>Mostrando {filteredProducts.length} productos registrados de {products.length} totales</span>
+            <span style={{ color: '#10b981', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '6px', height: '6px', background: '#10b981', borderRadius: '50%' }} /> Sincronizado en tiempo real con Cloud Functions
+            </span>
+          </div>
         </>
       )}
 
@@ -456,7 +520,6 @@ export function InventoryPage() {
           product={purchaseProduct}
           products={products}
           establishmentId={establishmentId}
-          userId={session.user.uid}
           onClose={() => setPurchaseProduct(null)}
           onSaved={() => {
             setPurchaseProduct(null)
@@ -473,7 +536,6 @@ export function InventoryPage() {
           product={products[0]}
           products={products}
           establishmentId={establishmentId}
-          userId={session.user.uid}
           onClose={() => setShowDirectPurchaseModal(false)}
           onSaved={() => {
             setShowDirectPurchaseModal(false)
@@ -640,7 +702,6 @@ interface PurchaseModalProps {
   product: Product
   products: Product[]
   establishmentId: string
-  userId: string
   onClose: () => void
   onSaved: () => void
   onError: (msg: string) => void
@@ -650,7 +711,6 @@ function PurchaseModal({
   product,
   products,
   establishmentId,
-  userId,
   onClose,
   onSaved,
   onError,
@@ -688,8 +748,7 @@ function PurchaseModal({
     try {
       await createPurchase(
         establishmentId,
-        [{ productId: selectedProductId, quantity, unitCost }],
-        userId
+        [{ productId: selectedProductId, quantity, unitCost }]
       )
       onSaved()
     } catch {

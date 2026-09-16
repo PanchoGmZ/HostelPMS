@@ -1,17 +1,20 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useEffect, type FormEvent } from 'react'
 import { X, UserPlus, UserCheck, AlertTriangle, Loader2 } from 'lucide-react'
-import { collection, doc } from 'firebase/firestore'
-import { db } from '../../services/firebase/config'
 import { saveGuest } from '../../services/guests/guestsService'
 import { createReservation } from '../../services/reservations/reservationsService'
 import { checkInGuest } from '../../services/stays/staysService'
 import type { Bed, Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
+import type { Reservation } from '../../types/reservations'
+import type { Stay } from '../../types/stays'
 
 interface WalkInModalProps {
   establishmentId: string
   bed: Bed
   room: Room
+  rooms?: Room[]
+  reservations?: Reservation[]
+  stays?: Stay[]
   existingGuests: Guest[]
   onClose: () => void
   onSuccess: (message: string) => void
@@ -25,10 +28,15 @@ function toLocalDateString(date: Date): string {
   return `${yyyy}-${mm}-${dd}`
 }
 
+const countries = [ "Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Birmania", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Ciudad del Vaticano", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guyana", "Guinea", "Guinea ecuatorial", "Guinea-Bisáu", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República del Congo", "República Democrática del Congo", "República Dominicana", "Ruanda", "Rumanía", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Suazilandia", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue" ]
+
 export function WalkInModal({
   establishmentId,
   bed,
   room,
+  rooms = [],
+  reservations = [],
+  stays = [],
   existingGuests,
   onClose,
   onSuccess,
@@ -36,7 +44,10 @@ export function WalkInModal({
 }: WalkInModalProps) {
   const today = new Date()
   const todayStr = toLocalDateString(today)
-  const bedDisplayName = bed.label || `Cama ${bed.id.slice(-3)}`
+
+  // Selected Room & Bed
+  const [selectedRoomId, setSelectedRoomId] = useState(room.id)
+  const [selectedBedId, setSelectedBedId] = useState(bed.id)
 
   // Mode: select existing guest or create new
   const [isNewGuest, setIsNewGuest] = useState(false)
@@ -49,13 +60,17 @@ export function WalkInModal({
   const [docType, setDocType] = useState<string>('ci')
   const [docNumber, setDocNumber] = useState('')
   const [nationality, setNationality] = useState('Boliviana')
+  const [birthDate, setBirthDate] = useState('')
   const [whatsapp, setWhatsapp] = useState('')
   const [email, setEmail] = useState('')
+  const [previousCity, setPreviousCity] = useState('')
+  const [nextCity, setNextCity] = useState('')
+  const [emergencyContact, setEmergencyContact] = useState('')
+  const [notes, setNotes] = useState('')
 
   // Stay parameters
   const [nights, setNights] = useState(1)
-  const basePrice = bed.basePriceBed ?? room.basePriceRoom ?? 50
-  const [pricePerNight, setPricePerNight] = useState(basePrice)
+  const [pricePerNight, setPricePerNight] = useState(0)
   const [deposit, setDeposit] = useState(0)
 
   const [submitting, setSubmitting] = useState(false)
@@ -67,6 +82,50 @@ export function WalkInModal({
     d.setDate(d.getDate() + Math.max(1, nights))
     return toLocalDateString(d)
   }, [nights])
+
+  // Availability logic
+  const occupiedBedIds = useMemo(() => {
+    const ids = new Set<string>()
+    // Current active stays
+    stays.forEach(s => {
+      if (s.status === 'active') {
+        s.bedIds?.forEach(id => ids.add(id))
+      }
+    })
+    
+    // Reservations overlapping [today, checkOutDate)
+    const checkInDate = new Date(`${todayStr}T00:00:00Z`);
+    const checkOutDate = new Date(`${checkOutDateStr}T00:00:00Z`);
+    
+    reservations.forEach(r => {
+      if (r.status !== 'confirmed') return;
+      if (!r.checkInDate || !r.checkOutDate) return;
+      const rIn = new Date(r.checkInDate.seconds * 1000);
+      const rOut = new Date(r.checkOutDate.seconds * 1000);
+      if (rIn < checkOutDate && rOut > checkInDate) {
+        r.bedIds?.forEach(id => ids.add(id))
+      }
+    })
+    return ids
+  }, [stays, reservations, todayStr, checkOutDateStr])
+
+  const selectedRoomObj = useMemo(() => rooms.find((r) => r.id === selectedRoomId) || room, [rooms, selectedRoomId, room])
+  
+  const availableBeds = useMemo(() => {
+    return selectedRoomObj.beds.filter((b) => b.status === 'active' && !occupiedBedIds.has(b.id))
+  }, [selectedRoomObj, occupiedBedIds])
+
+  const effectiveBedId = selectedBedId || availableBeds[0]?.id || ''
+  const effectiveBedObj = availableBeds.find((b) => b.id === effectiveBedId)
+  
+  const bedDisplayName = effectiveBedObj?.label || (effectiveBedId ? `Cama ${effectiveBedId.slice(-3)}` : 'Sin asignar')
+
+  // Set default price when bed changes
+  useEffect(() => {
+    if (effectiveBedObj) {
+      setPricePerNight(effectiveBedObj.basePriceBed ?? selectedRoomObj.basePriceRoom ?? 50)
+    }
+  }, [effectiveBedObj, selectedRoomObj])
 
   const totalEstimate = useMemo(() => {
     return Math.max(1, nights) * Math.max(0, pricePerNight)
@@ -91,8 +150,8 @@ export function WalkInModal({
 
     // Validate guest
     if (isNewGuest) {
-      if (!firstName.trim() || !lastName.trim() || !docNumber.trim()) {
-        setFormError('Por favor completa nombre, apellido y documento del huésped.')
+      if (!firstName.trim() || !lastName.trim() || !docNumber.trim() || !birthDate.trim()) {
+        setFormError('Por favor completa los campos obligatorios del huésped (Nombre, Apellido, Doc y Nacimiento).')
         return
       }
     } else {
@@ -102,6 +161,11 @@ export function WalkInModal({
       }
     }
 
+    if (!effectiveBedId) {
+      setFormError('No hay camas disponibles en la habitación seleccionada para estas fechas.')
+      return
+    }
+
     if (nights <= 0) {
       setFormError('La estadía debe ser de al menos 1 noche.')
       return
@@ -109,11 +173,9 @@ export function WalkInModal({
 
     setSubmitting(true)
     try {
-      // 1. If new guest, save to Firestore and get ID
+      // 1. If new guest, save to Firestore and get ID properly!
       if (isNewGuest) {
-        const newRef = doc(collection(db, `establishments/${establishmentId}/guests`))
-        finalGuestId = newRef.id
-        await saveGuest(
+        finalGuestId = await saveGuest(
           establishmentId,
           {
             firstName: firstName.trim(),
@@ -121,16 +183,15 @@ export function WalkInModal({
             documentType: docType,
             documentNumber: docNumber.trim(),
             nationality: nationality.trim(),
-            birthDate: null,
+            birthDate: birthDate || null,
             whatsapp: whatsapp.trim(),
             email: email.trim() || null,
             occupation: null,
-            previousCity: null,
-            nextCity: null,
-            emergencyContact: null,
-            notes: null,
-          },
-          finalGuestId
+            previousCity: previousCity.trim() || null,
+            nextCity: nextCity.trim() || null,
+            emergencyContact: emergencyContact.trim() || null,
+            notes: notes.trim() || null,
+          }
         )
       }
 
@@ -145,15 +206,15 @@ export function WalkInModal({
       }
 
       const pricePerNightMatrix = {
-        [bed.id]: Object.fromEntries(dates.map((date) => [date, pricePerNight])),
+        [effectiveBedId]: Object.fromEntries(dates.map((date) => [date, pricePerNight])),
       }
 
-      // 3. Create instant reservation
+      // 3. Create instant reservation (will fail if availability conflicts in backend)
       const resResult = await createReservation({
         establishmentId,
         guestId: finalGuestId,
-        roomId: room.id,
-        bedIds: [bed.id],
+        roomId: selectedRoomObj.id,
+        bedIds: [effectiveBedId],
         saleMode: 'bed',
         checkIn: todayStr,
         checkOut: checkOutDateStr,
@@ -170,8 +231,8 @@ export function WalkInModal({
         establishmentId,
         reservationId: resResult.reservationId,
         guestIds: [finalGuestId],
-        roomId: room.id,
-        bedIds: [bed.id],
+        roomId: selectedRoomObj.id,
+        bedIds: [effectiveBedId],
         expectedCheckOutDate: checkOutDateStr,
         deposit,
         documentVerified: true,
@@ -192,14 +253,14 @@ export function WalkInModal({
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
         className="modal-form"
-        style={{ maxWidth: '540px' }}
+        style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
         <div className="modal-header">
           <div>
             <span className="kicker">Llegada Inmediata (Mostrador)</span>
-            <h2>Walk-in: {bedDisplayName} ({room.name})</h2>
+            <h2>Walk-in: Recepción</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar">
             <X size={19} />
@@ -305,9 +366,22 @@ export function WalkInModal({
               <label>Nacionalidad</label>
               <input
                 type="text"
+                list="countries"
                 value={nationality}
                 onChange={(e) => setNationality(e.target.value)}
-                placeholder="Argentina, Boliviana, etc."
+                placeholder="Ej. Boliviana"
+              />
+              <datalist id="countries">
+                {countries.map(c => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div>
+              <label>Fecha de Nacimiento *</label>
+              <input
+                type="date"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+                required
               />
             </div>
             <div>
@@ -319,8 +393,8 @@ export function WalkInModal({
                 placeholder="+591 ..."
               />
             </div>
-            <div style={{ gridColumn: 'span 2' }}>
-              <label>Correo Electrónico (opcional)</label>
+            <div>
+              <label>Correo Electrónico</label>
               <input
                 type="email"
                 value={email}
@@ -328,8 +402,81 @@ export function WalkInModal({
                 placeholder="correo@ejemplo.com"
               />
             </div>
+            <div>
+              <label>Ciudad Anterior</label>
+              <input
+                type="text"
+                value={previousCity}
+                onChange={(e) => setPreviousCity(e.target.value)}
+              />
+            </div>
+            <div>
+              <label>Siguiente Destino</label>
+              <input
+                type="text"
+                value={nextCity}
+                onChange={(e) => setNextCity(e.target.value)}
+              />
+            </div>
+            <div>
+              <label>Contacto Emergencia</label>
+              <input
+                type="text"
+                value={emergencyContact}
+                onChange={(e) => setEmergencyContact(e.target.value)}
+                placeholder="Nombre y teléfono"
+              />
+            </div>
+            <div>
+              <label>Notas</label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Alergias, etc."
+              />
+            </div>
           </div>
         )}
+
+        <hr style={{ margin: '14px 0', borderTop: '1px solid var(--line)' }} />
+
+        {/* Room and Bed Selection */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '14px' }}>
+          <div>
+            <label>Habitación</label>
+            <select
+              value={selectedRoomId}
+              onChange={(e) => {
+                setSelectedRoomId(e.target.value)
+                setSelectedBedId('')
+              }}
+              required
+            >
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Cama (Libre todo el rango)</label>
+            <select
+              value={effectiveBedId}
+              onChange={(e) => setSelectedBedId(e.target.value)}
+              required
+              disabled={availableBeds.length === 0}
+            >
+              {availableBeds.length === 0 && <option value="">Ninguna disponible</option>}
+              {availableBeds.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.label || `Cama ${b.id.slice(-3)}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {/* Stay details */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
@@ -380,7 +527,7 @@ export function WalkInModal({
           <button type="button" className="secondary-button" onClick={onClose} disabled={submitting}>
             Cancelar
           </button>
-          <button type="submit" className="primary-button" disabled={submitting}>
+          <button type="submit" className="primary-button" disabled={submitting || !effectiveBedId}>
             {submitting ? (
               <>
                 <Loader2 size={16} className="loader" /> Procesando ingreso...

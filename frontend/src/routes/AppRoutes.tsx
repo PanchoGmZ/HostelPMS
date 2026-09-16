@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 import { AppShell } from '../layouts/AppShell'
-import { DashboardPage } from '../pages/dashboard/DashboardPage'
 import { LoginPage } from '../pages/auth/LoginPage'
 import { RoomsPage } from '../pages/rooms/RoomsPage'
 import { GuestsPage } from '../pages/guests/GuestsPage'
@@ -30,7 +29,6 @@ function ProtectedRoutes() {
     <AppShell>
       <Routes>
         <Route path="/" element={<ReceptionPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/rooms" element={<RoomsPage />} />
         <Route path="/guests" element={<GuestsPage />} />
         <Route path="/reservations" element={<ReservationsPage />} />

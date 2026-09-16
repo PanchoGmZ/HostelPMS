@@ -21,7 +21,7 @@ import type { CleaningTask, MaintenanceIncident } from '../../types/operations'
 import type { Product } from '../../types/inventory'
 
 import { ReceptionHeader } from '../../components/reception/ReceptionHeader'
-import { KanbanBoard } from '../../components/reception/KanbanBoard'
+import { ArrivalsPanel, DeparturesPanel, PendingPanel } from '../../components/reception/DashboardPanels'
 import { BedMatrix } from '../../components/reception/BedMatrix'
 import { GuestStayDrawer } from '../../components/reception/GuestStayDrawer'
 import { QuickActionModal } from '../../components/reception/QuickActionModal'
@@ -89,6 +89,7 @@ export function ReceptionPage() {
   // Load all operational data in parallel
   const loadData = useCallback(async (isSilent = false) => {
     if (!establishmentId) return
+
     if (!isSilent) setLoading(true)
     else setRefreshing(true)
     setError(null)
@@ -127,18 +128,20 @@ export function ReceptionPage() {
       setIncidents(opsData.maintenance)
       setProducts(invData.products)
 
-      // If drawer is open, refresh the active stay reference
-      if (drawerStay) {
-        const updated = staysData.find((s) => s.id === drawerStay.id)
-        if (updated) setDrawerStay(updated)
-      }
+
+      setDrawerStay(prev => {
+        if (!prev) return prev;
+        const updated = staysData.find((s) => s.id === prev.id)
+
+        return updated || prev
+      })
     } catch {
       setError('No se pudieron actualizar los datos de recepción.')
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [establishmentId, drawerStay])
+  }, [establishmentId])
 
   useEffect(() => {
     const timer = window.setTimeout(() => void loadData(), 0)
@@ -302,43 +305,7 @@ export function ReceptionPage() {
       />
 
       <div className="reception-dashboard-layout">
-        <div className="reception-sidebar-panel kanban-container">
-          <KanbanBoard
-            todayArrivals={todayArrivals}
-            todayDepartures={todayDepartures}
-            cleaningPending={pendingCleaning}
-            maintenanceActive={activeIncidents}
-            guests={guests}
-            rooms={rooms}
-            folios={folios}
-            onCheckInReservation={(res) => {
-              const resRoom = rooms.find((r) => r.id === res.roomId)
-              const resBed = resRoom?.beds.find((b) => res.bedIds?.includes(b.id))
-              if (resRoom && resBed) {
-                setWalkInBed({ bed: resBed, room: resRoom })
-              } else {
-                setReservationModalData({})
-              }
-            }}
-            onOpenStayDetail={(stay) => setDrawerStay(stay)}
-            onQuickCheckout={(stay) => {
-              const g = guests.find((item) => stay.guestIds?.includes(item.id))
-              const f = folios.find((item) => item.stayId === stay.id)
-              setCheckoutData({ stay, guest: g, folio: f })
-            }}
-            onOpenQuickAction={(roomId, bedId) => {
-               const room = rooms.find(r => r.id === roomId);
-               if (!room) return;
-               const bed = room.beds.find(b => b.id === bedId);
-               if (bed) {
-                  setQuickActionBed({ room, bed });
-               }
-            }}
-          />
-        </div>
-
-        <div className="reception-main-panel">
-          {/* Bed Matrix / Room Grid */}
+        <div className="dashboard-main-column">
           {loading ? (
             <div className="screen-state inline-state">
               <span className="loader" />
@@ -354,6 +321,48 @@ export function ReceptionPage() {
               onBedClick={handleBedClick}
             />
           )}
+
+          <PendingPanel
+            cleaningPending={pendingCleaning}
+            maintenanceActive={activeIncidents}
+            rooms={rooms}
+            onOpenQuickAction={(roomId, bedId) => {
+              const room = rooms.find(r => r.id === roomId);
+              if (!room) return;
+              const bed = room.beds.find(b => b.id === bedId);
+              if (bed) {
+                setQuickActionBed({ room, bed });
+              }
+            }}
+          />
+        </div>
+
+        <div className="dashboard-side-column">
+          <ArrivalsPanel
+            todayArrivals={todayArrivals}
+            guests={guests}
+            rooms={rooms}
+            onCheckInReservation={(res) => {
+              const resRoom = rooms.find((r) => r.id === res.roomId)
+              const resBed = resRoom?.beds.find((b) => res.bedIds?.includes(b.id))
+              if (resRoom && resBed) {
+                setWalkInBed({ bed: resBed, room: resRoom })
+              } else {
+                setReservationModalData({})
+              }
+            }}
+          />
+          <DeparturesPanel
+            todayDepartures={todayDepartures}
+            guests={guests}
+            rooms={rooms}
+            folios={folios}
+            onQuickCheckout={(stay) => {
+              const g = guests.find((item) => stay.guestIds?.includes(item.id))
+              const f = folios.find((item) => item.stayId === stay.id)
+              setCheckoutData({ stay, guest: g, folio: f })
+            }}
+          />
         </div>
       </div>
 
@@ -400,6 +409,9 @@ export function ReceptionPage() {
           establishmentId={establishmentId}
           bed={walkInBed.bed}
           room={walkInBed.room}
+          rooms={rooms}
+          reservations={reservations}
+          stays={stays}
           existingGuests={guests}
           onClose={() => setWalkInBed(null)}
           onSuccess={(msg) => {

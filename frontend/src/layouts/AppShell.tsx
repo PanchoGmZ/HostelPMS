@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { BarChart3, BedDouble, Building2, CalendarDays, ConciergeBell, CreditCard, Globe2, Menu, Package, Search, Settings2, ShoppingCart, Users, WalletCards, Wrench, X } from 'lucide-react'
+import { BedDouble, Building2, CalendarDays, ConciergeBell, CreditCard, Globe2, Menu, Package, Settings2, ShoppingCart, Users, WalletCards, Wrench, X } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
 
@@ -21,7 +21,6 @@ const navGroups = [
   {
     title: 'Gestión (Admin)',
     items: [
-      { label: 'Resumen (Métricas)', icon: BarChart3, to: '/dashboard' },
       { label: 'Habitaciones', icon: BedDouble, to: '/rooms' },
       { label: 'Reservas', icon: CalendarDays, to: '/reservations' },
       { label: 'Estadías', icon: ConciergeBell, to: '/stays' },
@@ -29,7 +28,7 @@ const navGroups = [
       { label: 'POS Consumos', icon: ShoppingCart, to: '/pos' },
       { label: 'Huéspedes', icon: Users, to: '/guests' },
       { label: 'Inventario', icon: Package, to: '/inventory' },
-      { label: 'Reportes', icon: BarChart3, to: '/reports' },
+      { label: 'Reportes', icon: Globe2, to: '/reports' },
       { label: 'Configuración', icon: Settings2, to: '/settings' },
       { label: 'Integraciones', icon: Globe2, to: '/integrations' },
     ]
@@ -45,51 +44,62 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell">
-      <aside className={`sidebar ${isMenuOpen ? 'sidebar-open' : ''}`}>
-        <div className="brand brand-light"><span className="brand-mark"><Building2 size={19} /></span><span>Casa Nómada</span></div>
-        <div className="property"><span className="eyebrow">Establecimiento</span><strong>Hostel principal</strong><span className="status-dot">● Operativo</span></div>
-        <nav className="nav-list" aria-label="Navegación principal">
+      <aside className={`sidebar ${isMenuOpen ? 'sidebar-open' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 16px' }}>
+        <div className="brand brand-light" style={{ display: 'flex', alignItems: 'center', gap: '10px', paddingBottom: '12px', borderBottom: '1px solid var(--line-light)' }}>
+          <span className="brand-mark" style={{ background: 'var(--teal-deep)', color: 'white', padding: '6px', borderRadius: '6px', display: 'flex' }}><Building2 size={16} /></span>
+          <span style={{ fontSize: '16px', fontWeight: '700', letterSpacing: '-0.02em', color: 'var(--ink)' }}>Pata y Perro</span>
+        </div>
+
+        <div className="property" style={{ padding: '8px 10px', background: 'var(--surface-50)', borderRadius: '8px', border: '1px solid var(--line-light)' }}>
+          <span className="eyebrow" style={{ fontSize: '9px', textTransform: 'uppercase', color: 'var(--text-light)', fontWeight: 600, letterSpacing: '0.05em' }}>Establecimiento</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+            <strong style={{ fontSize: '13px', color: 'var(--ink)' }}>Hostel principal</strong>
+            <span style={{ fontSize: '9px', color: 'var(--teal-deep)', background: 'var(--mint)', padding: '2px 4px', borderRadius: '4px', fontWeight: 600 }}>● Activo</span>
+          </div>
+        </div>
+        <nav className="nav-list" aria-label="Navegación principal" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
           {navGroups.map((group) => (
-            <div key={group.title} className="nav-group" style={{ marginBottom: '1.5rem' }}>
+            <div key={group.title} className="nav-group">
               <h4 style={{ 
-                fontSize: '0.75rem', 
+                fontSize: '10px', 
                 textTransform: 'uppercase', 
-                letterSpacing: '0.05em', 
-                color: 'var(--text-tertiary)', 
-                margin: '0 0 0.5rem 1rem',
+                letterSpacing: '0.04em', 
+                color: 'var(--text-light)', 
+                margin: '0 0 4px 8px',
                 fontWeight: 600
               }}>
                 {group.title}
               </h4>
-              {group.items.map(({ label, icon: Icon, to }) => (
-                <NavLink key={to} to={to} end={to === '/'} onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-                  <Icon size={18} strokeWidth={1.8} /><span>{label}</span>
-                </NavLink>
-              ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                {group.items.map(({ label, icon: Icon, to }) => (
+                  <NavLink key={to} to={to} end={to === '/'} onClick={() => setIsMenuOpen(false)} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} style={{ padding: '6px 8px', borderRadius: '6px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <Icon size={16} strokeWidth={2} /><span>{label}</span>
+                  </NavLink>
+                ))}
+              </div>
             </div>
           ))}
         </nav>
-        <div className="cash-status-card">
-          <strong>Caja y Turnos</strong>
-          <p>Gestiona el efectivo y los cierres de turno.</p>
-          <NavLink to="/cash" className="small-button" style={{ marginTop: '4px', textAlign: 'center' }} onClick={() => setIsMenuOpen(false)}>Abrir módulo de caja</NavLink>
+
+        <div className="sidebar-footer" style={{ paddingTop: '10px', borderTop: '1px solid var(--line-light)', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span className="eyebrow" style={{ fontSize: '9px', textTransform: 'uppercase', color: 'var(--text-light)', fontWeight: 600, letterSpacing: '0.05em' }}>Sesión</span>
+          <strong style={{ fontSize: '12px', color: 'var(--ink)' }}>{email}</strong>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--text-light)', background: 'var(--surface-50)', padding: '2px 6px', borderRadius: '12px', border: '1px solid var(--line)' }}>{role === 'admin' ? 'Administrador' : 'Recepción'}</span>
+            <button className="text-button" type="button" onClick={() => void signOut()} style={{ fontSize: '11px', color: 'var(--danger)', fontWeight: 500, padding: 0 }}>Cerrar sesión</button>
+          </div>
         </div>
-        <div className="sidebar-footer"><span className="eyebrow">Sesión activa</span><strong>{email}</strong><span className="role-label">{role === 'admin' ? 'Administrador' : 'Recepción'}</span><button className="text-button" type="button" onClick={() => void signOut()}>Cerrar sesión</button></div>
       </aside>
       {isMenuOpen && <button className="sidebar-backdrop" aria-label="Cerrar menú" type="button" onClick={() => setIsMenuOpen(false)} />}
       <main className="main-content">
-        <div className="topbar">
-          <div className="topbar-search">
-            <Search size={16} color="var(--muted)" />
-            <input type="text" placeholder="Buscar huésped, reserva..." />
-          </div>
-          <div className="topbar-actions">
-            <button className="menu-button" type="button" aria-label="Abrir menú" onClick={() => setIsMenuOpen(true)}>
-              {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        <div className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 32px', background: 'var(--surface)', borderBottom: '1px solid var(--line-light)', position: 'sticky', top: 0, zIndex: 10, minHeight: '52px' }}>
+          <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <button className="menu-button" type="button" aria-label="Abrir menú" onClick={() => setIsMenuOpen(true)} style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer' }}>
+              {isMenuOpen ? <X size={24} color="var(--ink)" /> : <Menu size={24} color="var(--ink)" />}
             </button>
           </div>
         </div>
-        <div className="app-content-wrapper">
+        <div className="app-content-wrapper" style={{ padding: '32px', maxWidth: '1280px', margin: '0 auto' }}>
           {children}
         </div>
       </main>

@@ -1,9 +1,11 @@
 export type RoomType = 'private' | 'dorm'
 export type ResourceStatus = 'active' | 'inactive'
+export type BedType = '1_plaza' | '2_plazas'
 
 export interface Bed {
   id: string
   label: string
+  bedType?: BedType
   basePriceBed: number
   status: ResourceStatus
   outOfServiceReason: string | null

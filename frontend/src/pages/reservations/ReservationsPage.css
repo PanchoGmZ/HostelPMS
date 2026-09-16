@@ -1,0 +1,496 @@
+.reservations-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .reservations-layout {
+    grid-template-columns: 380px 1fr;
+    gap: 28px;
+  }
+}
+@media (min-width: 1280px) {
+  .reservations-layout {
+    grid-template-columns: 420px 1fr;
+    gap: 32px;
+  }
+}
+
+.calendar-container {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+  position: sticky;
+  top: 88px;
+  z-index: 10;
+  box-shadow: 0 2px 10px rgba(33, 48, 45, 0.04);
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.calendar-header h3 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: capitalize;
+}
+
+.calendar-nav {
+  display: flex;
+  gap: 6px;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  text-align: center;
+}
+
+.calendar-day-header {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.15s ease;
+  border: 1.5px solid transparent;
+}
+
+.calendar-day:hover {
+  background: var(--sand);
+  z-index: 40;
+}
+
+.calendar-day.other-month {
+  color: var(--line);
+  cursor: default;
+}
+
+.calendar-day.today {
+  border-color: var(--teal);
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.calendar-day.has-reservations {
+  background: #f0f7f3;
+  font-weight: 700;
+  color: var(--ink);
+  border-color: #d6ebdf;
+}
+
+.calendar-day.has-reservations:hover {
+  background: #e1f2e8;
+  border-color: var(--teal);
+}
+
+.res-indicators {
+  display: flex;
+  gap: 3px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
+  padding: 0 2px;
+}
+
+.res-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+}
+.res-dot.confirmed { background: #3b82f6; }
+.res-dot.completed { background: var(--ok); }
+.res-dot.cancelled { background: var(--danger); }
+
+/* Tooltip & Interactivity */
+.day-tooltip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  background: #182232;
+  color: #f8fafc;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  width: 250px;
+  z-index: 100;
+  display: none;
+  pointer-events: auto;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.35), 0 8px 10px -6px rgba(0, 0, 0, 0.25);
+  text-align: left;
+  border: 1px solid #334155;
+  cursor: default;
+}
+
+/* Invisible bridge so mouse hover is never lost moving to tooltip */
+.day-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: transparent;
+}
+
+.calendar-day:hover .day-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Tooltip alignment by column */
+.day-tooltip.align-left {
+  left: -6px;
+  transform: none;
+}
+.day-tooltip.align-center {
+  left: 50%;
+  transform: translateX(-50%);
+}
+.day-tooltip.align-right {
+  right: -6px;
+  left: auto;
+  transform: none;
+}
+
+.day-tooltip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: #e2e8f0;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 6px;
+}
+.tooltip-count {
+  font-size: 11px;
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.tooltip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.tooltip-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: #f8fafc;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+.tooltip-item:hover {
+  background: #243247;
+  border-color: #60a5fa;
+  transform: translateY(-1px);
+}
+
+.tooltip-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.tooltip-item-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tooltip-status-pill {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.tooltip-status-pill.confirmed {
+  background: rgba(59, 130, 246, 0.25);
+  color: #93c5fd;
+}
+.tooltip-status-pill.completed {
+  background: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+}
+.tooltip-status-pill.cancelled {
+  background: rgba(239, 68, 68, 0.25);
+  color: #fca5a5;
+}
+
+.tooltip-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.tooltip-item-price {
+  color: #34d399;
+  font-weight: 600;
+}
+
+.tooltip-item-action {
+  font-size: 10px;
+  color: #60a5fa;
+  font-weight: 600;
+  margin-top: 2px;
+  text-align: right;
+}
+
+/* Status Badges */
+.res-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.res-status-badge.confirmed {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+.res-status-badge.completed {
+  background: var(--ok-bg);
+  color: var(--ok);
+  border: 1px solid var(--ok-line);
+}
+.res-status-badge.cancelled {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-line);
+}
+
+/* Reservation Cards */
+.reservation-card {
+  display: flex;
+  flex-direction: column;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--white);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.reservation-card:hover {
+  border-color: #cbd8d0;
+  box-shadow: 0 4px 12px rgba(33, 48, 45, 0.05);
+  transform: translateY(-2px);
+}
+.res-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.res-card-dates {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.res-card-dates span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.res-card-guest {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.res-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.res-card-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.res-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #f4f5f7;
+}
+.res-channel {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  background: #f0f4f2;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.res-amount {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+/* Reservation Details Modal (Mini Ventana) */
+.reservation-details-modal {
+  width: min(100%, 520px);
+}
+
+.icon-close-button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+.icon-close-button:hover {
+  color: var(--ink);
+}
+
+.res-detail-highlight-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f4f8f6;
+  border: 1px solid #cce3d8;
+  border-radius: 8px;
+  padding: 14px 18px;
+}
+
+.res-detail-date-block {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.res-detail-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.res-detail-value {
+  font-size: 14px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.res-detail-arrow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.res-detail-nights-badge {
+  background: var(--white);
+  border: 1px solid #b7d7c6;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--teal);
+}
+
+.res-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 480px) {
+  .res-detail-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .res-detail-section.full-width {
+    grid-column: 1 / -1;
+  }
+}
+
+.res-detail-section {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.res-detail-section h4 {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0 0 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.res-detail-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.res-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.res-detail-row .text-muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+

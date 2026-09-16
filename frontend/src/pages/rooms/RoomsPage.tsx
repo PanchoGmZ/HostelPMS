@@ -1,17 +1,21 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   BedDouble,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
   CircleAlert,
+  DoorOpen,
   Edit3,
   Eye,
   Filter,
+  LayoutGrid,
+  List,
+  MoreVertical,
   Plus,
   Power,
   Search,
   ShieldCheck,
+  User,
   Wrench,
   X,
 } from 'lucide-react'
@@ -27,6 +31,7 @@ import {
 } from '../../services/rooms/roomsService'
 import { bedSchema, outOfServiceSchema, roomSchema } from '../../schemas/roomsSchema'
 import type { Bed, Room, RoomType } from '../../types/rooms'
+import './RoomsPage.css'
 
 type RoomDraft = RoomForm
 const blankRoom: RoomDraft = {
@@ -55,10 +60,12 @@ export function RoomsPage() {
 
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  // Filters & Search
+  // Filters, Search & View
   const [searchQuery, setSearchQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | RoomType>('all')
+  const [floorFilter, setFloorFilter] = useState<string>('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'occupied' | 'blocked'>('all')
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid')
 
   // Modals
   const [roomEditor, setRoomEditor] = useState<RoomEditor | null>(null)
@@ -97,6 +104,17 @@ export function RoomsPage() {
     }
   }, [establishmentId])
 
+  // Extract unique floors for dropdown
+  const availableFloors = useMemo(() => {
+    const floors = new Set<string>()
+    rooms.forEach((r) => {
+      if (r.floor && r.floor.trim()) {
+        floors.add(r.floor.trim())
+      }
+    })
+    return Array.from(floors)
+  }, [rooms])
+
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
       const q = searchQuery.toLowerCase().trim()
@@ -107,15 +125,22 @@ export function RoomsPage() {
 
       const matchesType = typeFilter === 'all' || room.type === typeFilter
 
+      const matchesFloor =
+        floorFilter === 'all' ||
+        (room.floor && room.floor.trim().toLowerCase() === floorFilter.toLowerCase())
+
       const matchesStatus =
         statusFilter === 'all' ||
-        (statusFilter === 'available' && room.beds.some((b) => b.isAvailable && !b.outOfServiceReason && !b.maintenanceBlocked)) ||
+        (statusFilter === 'available' &&
+          room.beds.some((b) => b.isAvailable && !b.outOfServiceReason && !b.maintenanceBlocked)) ||
         (statusFilter === 'occupied' && room.beds.some((b) => b.isAvailable === false)) ||
-        (statusFilter === 'blocked' && (room.maintenanceBlocked || room.beds.some((b) => b.maintenanceBlocked || b.outOfServiceReason)))
+        (statusFilter === 'blocked' &&
+          (room.maintenanceBlocked ||
+            room.beds.some((b) => b.maintenanceBlocked || b.outOfServiceReason)))
 
-      return matchesSearch && matchesType && matchesStatus
+      return matchesSearch && matchesType && matchesFloor && matchesStatus
     })
-  }, [rooms, searchQuery, typeFilter, statusFilter])
+  }, [rooms, searchQuery, typeFilter, floorFilter, statusFilter])
 
   // Summary Metrics
   const totalBedsCount = useMemo(() => {
@@ -126,7 +151,9 @@ export function RoomsPage() {
     return rooms.reduce(
       (acc, r) =>
         acc +
-        r.beds.filter((b) => b.status === 'active' && b.isAvailable && !b.outOfServiceReason && !b.maintenanceBlocked).length,
+        r.beds.filter(
+          (b) => b.status === 'active' && b.isAvailable && !b.outOfServiceReason && !b.maintenanceBlocked
+        ).length,
       0
     )
   }, [rooms])
@@ -138,10 +165,16 @@ export function RoomsPage() {
   const blockedBedsCount = useMemo(() => {
     return rooms.reduce(
       (acc, r) =>
-        acc + r.beds.filter((b) => b.maintenanceBlocked || b.outOfServiceReason || b.status === 'inactive').length,
+        acc +
+        r.beds.filter((b) => b.maintenanceBlocked || b.outOfServiceReason || b.status === 'inactive').length,
       0
     )
   }, [rooms])
+
+  const occupiedPercentage = totalBedsCount > 0 ? Math.round((occupiedBedsCount / totalBedsCount) * 100) : 0
+  const availablePercentage = totalBedsCount > 0 ? Math.round((availableBedsCount / totalBedsCount) * 100) : 0
+  const operativeBedsCount = totalBedsCount - blockedBedsCount
+  const operativesPercentage = totalBedsCount > 0 ? Math.round((operativeBedsCount / totalBedsCount) * 100) : 100
 
   if (!establishmentId) {
     return (
@@ -239,7 +272,7 @@ export function RoomsPage() {
         reason
       )
       setOutOfServiceTarget(null)
-      setSuccessMessage(`Cama puestas fuera de servicio: ${reason}`)
+      setSuccessMessage(`Cama puesta fuera de servicio: ${reason}`)
       await reload()
     } catch {
       setError('No se pudo actualizar el estado de la cama.')
@@ -247,15 +280,22 @@ export function RoomsPage() {
   }
 
   return (
-    <div className="dashboard-page rooms-page">
-      <header className="page-header">
+    <div className="rooms-page-container">
+      {/* Header con breadcrumb superior y botón Nueva habitación */}
+      <header className="rooms-top-header">
         <div>
-          <span className="kicker">Inventario físico</span>
+          <div className="rooms-breadcrumb-row">
+            <span className="breadcrumb-tag">● INVENTARIO FÍSICO</span>
+            <span className="breadcrumb-sub">/ Capacidad Total</span>
+          </div>
           <h1>Habitaciones y Camas</h1>
-          <p>Organización visual de espacios, disponibilidad diaria y bloqueos de mantenimiento.</p>
+          <p>
+            Organización visual de espacios, disponibilidad diaria en tiempo real y gestión de bloqueos por mantenimiento.
+          </p>
         </div>
+
         <button
-          className="primary-button compact-button"
+          className="btn-new-room"
           type="button"
           onClick={() =>
             setRoomEditor({
@@ -272,73 +312,117 @@ export function RoomsPage() {
       {error && <div className="form-error" role="alert">{error}</div>}
 
       {successMessage && (
-        <div className="stay-notice" style={{ background: '#eaf6ed', borderColor: '#b6e2c1', color: '#1e6631' }}>
+        <div className="stay-notice" style={{ background: '#ecfdf5', borderColor: '#a7f3d0', color: '#065f46' }}>
           <CheckCircle2 size={16} />
           {successMessage}
         </div>
       )}
 
-      <div className="stay-notice" style={{ marginBottom: '16px' }}>
-        <ShieldCheck size={18} />
-        <span>
-          La disponibilidad y bloqueo crítico de reservas en calendario son gestionados por el backend (Firestore availability).
+      {/* Banner de Sincronización */}
+      <div className="rooms-sync-banner">
+        <div className="rooms-sync-banner-content">
+          <span className="sync-shield-icon">
+            <ShieldCheck size={18} />
+          </span>
+          <span>
+            <strong>Sincronización de disponibilidad activa:</strong> La disponibilidad y bloqueo crítico de reservas en calendario son gestionados por el backend (Firestore availability).
+          </span>
+        </div>
+        <span className="sync-connected-badge">
+          <span className="dot" /> Conectado
         </span>
       </div>
 
-      {/* Summary Cards */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-          gap: '12px',
-          marginBottom: '16px',
-        }}
-      >
-        <div className="product-card" style={{ padding: '12px 14px' }}>
-          <div className="product-top">
-            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Habitaciones</span>
-            <BedDouble size={16} color="var(--teal)" />
-          </div>
-          <strong style={{ fontSize: '20px', color: 'var(--ink)' }}>{rooms.length}</strong>
-        </div>
-
-        <div className="product-card" style={{ padding: '12px 14px' }}>
-          <div className="product-top">
-            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Camas Disponibles Hoy</span>
-            <span style={{ fontSize: '11px', color: '#1b5e30', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1b5e30' }} /> Libre
+      {/* Fila de Métricas / KPI Cards */}
+      <div className="rooms-metrics-grid">
+        {/* Tarjeta 1: HABITACIONES */}
+        <div className="rooms-metric-card">
+          <div className="rooms-metric-card-top">
+            <span className="rooms-metric-title">HABITACIONES</span>
+            <span className="metric-icon-circle">
+              <DoorOpen size={16} />
             </span>
           </div>
-          <strong style={{ fontSize: '20px', color: '#1b5e30' }}>
-            {availableBedsCount} / {totalBedsCount}
-          </strong>
+          <div className="rooms-metric-card-value">
+            <span className="metric-big-num">{rooms.length}</span>
+            <span className="metric-unit">unidades activas</span>
+          </div>
+          <div className="rooms-metric-bar-track">
+            <div className="rooms-metric-bar-fill" style={{ width: '40%', background: '#0f172a' }} />
+          </div>
         </div>
 
-        <div className="product-card" style={{ padding: '12px 14px' }}>
-          <div className="product-top">
-            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Camas Ocupadas Hoy</span>
-            <span style={{ fontSize: '11px', color: '#b9381e', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#b9381e' }} /> Ocupada
+        {/* Tarjeta 2: CAMAS LIBRES HOY */}
+        <div className="rooms-metric-card">
+          <div className="rooms-metric-card-top">
+            <span className="rooms-metric-title">CAMAS LIBRES HOY</span>
+            <span className="metric-pill-badge pill-free">
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
+              Libre
             </span>
           </div>
-          <strong style={{ fontSize: '20px', color: '#b9381e' }}>{occupiedBedsCount}</strong>
+          <div className="rooms-metric-card-value">
+            <span className="metric-big-num text-green">{availableBedsCount}</span>
+            <span className="metric-unit">/ {totalBedsCount} camas</span>
+          </div>
+          <div className="rooms-metric-bar-track">
+            <div
+              className="rooms-metric-bar-fill"
+              style={{ width: `${availablePercentage}%`, background: '#10b981' }}
+            />
+          </div>
         </div>
 
-        <div className="product-card" style={{ padding: '12px 14px' }}>
-          <div className="product-top">
-            <span style={{ fontSize: '11px', color: 'var(--muted)' }}>Bloqueadas / Fuera Servicio</span>
-            <span style={{ fontSize: '11px', color: '#806729', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#806729' }} /> Mantenimiento
+        {/* Tarjeta 3: CAMAS OCUPADAS */}
+        <div className="rooms-metric-card">
+          <div className="rooms-metric-card-top">
+            <span className="rooms-metric-title">CAMAS OCUPADAS</span>
+            <span className="metric-pill-badge pill-occupied">
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ea580c' }} />
+              Ocupada
             </span>
           </div>
-          <strong style={{ fontSize: '20px', color: '#806729' }}>{blockedBedsCount}</strong>
+          <div className="rooms-metric-card-value">
+            <span className="metric-big-num">{occupiedBedsCount}</span>
+            <span className="metric-unit">hospedados ({occupiedPercentage}%)</span>
+          </div>
+          <div className="rooms-metric-bar-track">
+            <div
+              className="rooms-metric-bar-fill"
+              style={{ width: `${occupiedPercentage}%`, background: '#ea580c' }}
+            />
+          </div>
+        </div>
+
+        {/* Tarjeta 4: FUERA DE SERVICIO */}
+        <div className="rooms-metric-card">
+          <div className="rooms-metric-card-top">
+            <span className="rooms-metric-title">FUERA DE SERVICIO</span>
+            <span className="metric-pill-badge pill-maintenance">
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#64748b' }} />
+              Mantenimiento
+            </span>
+          </div>
+          <div className="rooms-metric-card-value">
+            <span className="metric-big-num">{blockedBedsCount}</span>
+            <span className="metric-unit">{operativesPercentage}% operativas</span>
+          </div>
+          <div className="rooms-metric-bar-track">
+            <div
+              className="rooms-metric-bar-fill"
+              style={{
+                width: `${totalBedsCount > 0 ? (blockedBedsCount / totalBedsCount) * 100 : 0}%`,
+                background: '#94a3b8',
+              }}
+            />
+          </div>
         </div>
       </div>
 
-      {/* Toolbar */}
-      <div className="guest-toolbar" style={{ flexWrap: 'wrap', gap: '12px', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: '1 1 250px' }}>
-          <Search size={16} color="var(--muted)" />
+      {/* Barra de Filtros y Búsqueda */}
+      <div className="rooms-toolbar-row">
+        <div className="rooms-search-box">
+          <Search size={16} color="#94a3b8" />
           <input
             type="text"
             placeholder="Buscar por nombre de habitación o piso..."
@@ -346,19 +430,15 @@ export function RoomsPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Filter size={15} color="var(--muted)" />
+
+        <div className="rooms-filters-group">
+          {/* Tipo de Habitación */}
+          <div className="rooms-filter-select-wrapper">
+            <Filter size={14} color="#64748b" />
             <select
+              className="rooms-filter-select"
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value as any)}
-              style={{
-                padding: '6px 10px',
-                borderRadius: '6px',
-                border: '1px solid var(--line)',
-                background: 'var(--white)',
-                fontSize: '12px',
-              }}
             >
               <option value="all">Todos los tipos</option>
               <option value="dorm">Dormitorios</option>
@@ -366,25 +446,59 @@ export function RoomsPage() {
             </select>
           </div>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
-            style={{
-              padding: '6px 10px',
-              borderRadius: '6px',
-              border: '1px solid var(--line)',
-              background: 'var(--white)',
-              fontSize: '12px',
-            }}
-          >
-            <option value="all">Todos los estados</option>
-            <option value="available">Con camas disponibles</option>
-            <option value="occupied">Con camas ocupadas</option>
-            <option value="blocked">Con bloqueos / mantenimiento</option>
-          </select>
+          {/* Pisos */}
+          <div className="rooms-filter-select-wrapper">
+            <select
+              className="rooms-filter-select"
+              value={floorFilter}
+              onChange={(e) => setFloorFilter(e.target.value)}
+            >
+              <option value="all">Todos los pisos</option>
+              {availableFloors.map((floor) => (
+                <option key={floor} value={floor}>
+                  {floor}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Estados */}
+          <div className="rooms-filter-select-wrapper">
+            <select
+              className="rooms-filter-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as any)}
+            >
+              <option value="all">Todos los estados</option>
+              <option value="available">Con camas disponibles</option>
+              <option value="occupied">Con camas ocupadas</option>
+              <option value="blocked">Con bloqueos / mantenimiento</option>
+            </select>
+          </div>
+
+          {/* Selector de Vista: Grid vs List */}
+          <div className="rooms-view-toggle">
+            <button
+              type="button"
+              className={`view-toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+              onClick={() => setViewMode('grid')}
+              title="Vista de cuadrícula"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              type="button"
+              className={`view-toggle-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+              title="Vista de lista"
+            >
+              <List size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
+      {/* Lista / Grid de Habitaciones */}
       {isLoading ? (
         <div className="screen-state inline-state">
           <span className="loader" />
@@ -403,9 +517,9 @@ export function RoomsPage() {
           <p>No se encontraron habitaciones con el filtro aplicado.</p>
         </div>
       ) : (
-        <div className="room-list">
+        <div className={`rooms-cards-grid ${viewMode === 'list' ? 'list-view' : ''}`}>
           {filteredRooms.map((room) => (
-            <RoomCard
+            <RoomCardItem
               key={room.id}
               room={room}
               isExpanded={expanded === room.id}
@@ -437,8 +551,42 @@ export function RoomsPage() {
               onBedStatus={(bed) => handleBedToggleStatus(room, bed)}
             />
           ))}
+
+          {/* Tarjeta Dashed: Crear nueva habitación */}
+          <div
+            className="room-create-card-placeholder"
+            onClick={() =>
+              setRoomEditor({
+                draft: blankRoom,
+                newBeds: [{ label: 'Cama 1', basePriceBed: 0 }],
+              })
+            }
+          >
+            <div className="create-card-icon-circle">
+              <Plus size={22} />
+            </div>
+            <h3>Crear nueva habitación</h3>
+            <p>Configura nuevas camas, literas, tipos de habitación y políticas de precios.</p>
+            <span className="create-card-action-link">
+              Comenzar configuración <ChevronRight size={14} />
+            </span>
+          </div>
         </div>
       )}
+
+      {/* Footer de la página */}
+      <footer className="rooms-page-footer">
+        <div>© 2025 HostelOps Cloud PMS — Sincronización en tiempo real habilitada.</div>
+        <div className="rooms-footer-links">
+          <span>Soporte técnico</span>
+          <span>•</span>
+          <span>Documentación API</span>
+          <span>•</span>
+          <span className="stable-badge">
+            <span className="green-dot" /> v2.4.0 Estable
+          </span>
+        </div>
+      </footer>
 
       {/* Modales */}
       {roomEditor && (
@@ -473,7 +621,7 @@ export function RoomsPage() {
   )
 }
 
-function RoomCard({
+function RoomCardItem({
   room,
   isExpanded,
   onToggle,
@@ -494,127 +642,330 @@ function RoomCard({
   onViewBed: (bed: Bed) => void
   onBedStatus: (bed: Bed) => void
 }) {
-  const activeBeds = room.beds.filter(
-    (bed) => bed.status === 'active' && !bed.outOfServiceReason && !bed.maintenanceBlocked
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    if (menuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [menuOpen])
+
+  const totalBeds = room.beds.length
+  const availableBeds = room.beds.filter(
+    (bed) => bed.status === 'active' && bed.isAvailable && !bed.outOfServiceReason && !bed.maintenanceBlocked
+  ).length
+  const occupiedBeds = room.beds.filter((bed) => bed.isAvailable === false).length
+  const blockedBeds = room.beds.filter(
+    (bed) => bed.maintenanceBlocked || bed.outOfServiceReason || bed.status === 'inactive'
   ).length
 
-  return (
-    <article className={`room-card ${room.status === 'inactive' ? 'is-inactive' : ''}`}>
-      <button className="room-heading" type="button" onClick={onToggle}>
-        <div className="room-heading-top">
-          <span className="room-icon">
-            <BedDouble size={21} />
-          </span>
-          <span className="room-title">
-            <strong>{room.name}</strong>
-            <small>
-              Piso {room.floor || '-'} · {room.type === 'dorm' ? 'Dormitorio' : 'Privada'} · {room.basePriceRoom} BOB
-            </small>
-          </span>
-          {isExpanded ? <ChevronUp size={19} color="var(--muted)" /> : <ChevronDown size={19} color="var(--muted)" />}
-        </div>
-        
-        <div className="room-badges">
-          <span className="room-capacity" style={{ border: '1px solid var(--line)', background: 'var(--white)', padding: '2px 8px', borderRadius: '4px' }}>
-            {activeBeds}/{room.beds.length} camas
-          </span>
-          {room.maintenanceBlocked && (
-            <span className="maintenance-badge">Mantenimiento</span>
-          )}
-          {room.cleaningCount ? (
-            <span className="maintenance-badge" style={{ background: '#eaf2f6', color: '#1e4c66' }}>
-              Limpieza
-            </span>
-          ) : null}
-        </div>
-      </button>
+  // Status badge calculation
+  let statusBadgeText = 'Disponible'
+  let statusBadgeClass = 'badge-available'
+  if (room.status === 'inactive') {
+    statusBadgeText = 'Inactiva'
+    statusBadgeClass = 'badge-inactive'
+  } else if (room.maintenanceBlocked || blockedBeds === totalBeds && totalBeds > 0) {
+    statusBadgeText = 'Mantenimiento'
+    statusBadgeClass = 'badge-maintenance'
+  } else if (totalBeds > 0 && occupiedBeds === totalBeds) {
+    statusBadgeText = 'Ocupada'
+    statusBadgeClass = 'badge-occupied'
+  } else if (occupiedBeds > 0) {
+    statusBadgeText = 'Ocup. Parcial'
+    statusBadgeClass = 'badge-partial'
+  }
 
-      <div className="room-actions">
-        <button type="button" title="Editar habitación" onClick={onEdit}>
-          <Edit3 size={16} />
-        </button>
-        <button
-          type="button"
-          title={room.status === 'active' ? 'Desactivar habitación' : 'Activar habitación'}
-          onClick={onStatus}
+  // Tariff calculation
+  const tariffLabel =
+    room.type === 'dorm' ? 'TARIFA CAMA' : room.basePriceRoom > 0 ? 'TARIFA BASE' : 'TARIFA'
+  const firstBedPrice = room.beds.find((b) => b.basePriceBed > 0)?.basePriceBed
+  const displayedPrice =
+    room.type === 'dorm' && firstBedPrice != null
+      ? firstBedPrice
+      : room.basePriceRoom
+  const tariffUnit =
+    displayedPrice > 0
+      ? room.type === 'dorm'
+        ? 'BOB / cama'
+        : 'BOB / noche'
+      : 'BOB'
+
+  // Availability text and progress
+  let availLeftText = `${availableBeds} de ${totalBeds} camas libres`
+  let availRightText = '100% libre'
+  let progressFillClass = 'fill-green'
+  let progressWidth = totalBeds > 0 ? (availableBeds / totalBeds) * 100 : 0
+
+  if (room.maintenanceBlocked) {
+    availLeftText = 'Mantenimiento bloqueante'
+    availRightText = 'Bloqueada'
+    progressFillClass = 'fill-red'
+    progressWidth = 100
+  } else if (totalBeds === 0) {
+    availLeftText = 'Sin camas configuradas'
+    availRightText = '-'
+    progressWidth = 0
+  } else if (occupiedBeds === totalBeds) {
+    availLeftText = `0 de ${totalBeds} cama libre (Ocupada)`
+    availRightText = '100% ocupada'
+    progressFillClass = 'fill-orange'
+    progressWidth = 100
+  } else if (occupiedBeds > 0) {
+    availLeftText = `${availableBeds} de ${totalBeds} camas libres`
+    availRightText = `${occupiedBeds} ocupada${occupiedBeds > 1 ? 's' : ''}`
+    progressFillClass = 'fill-orange'
+    progressWidth = totalBeds > 0 ? ((totalBeds - occupiedBeds) / totalBeds) * 100 : 0
+  }
+
+  // Tags generation
+  const tags: string[] = []
+  if (totalBeds === 1) {
+    tags.push(room.beds[0]?.label || '1 Cama')
+  } else if (totalBeds > 1) {
+    tags.push(`${totalBeds} Camas`)
+  }
+  if (room.amenities && room.amenities.length > 0) {
+    tags.push(...room.amenities)
+  }
+  if (room.name.toLowerCase().includes('demo') && !tags.some((t) => t.toLowerCase().includes('demo'))) {
+    tags.push('Demo Mode')
+  }
+  if (room.name.toLowerCase().includes('prueba') && !tags.some((t) => t.toLowerCase().includes('prueba'))) {
+    tags.push('En pruebas')
+  }
+
+  const floorText = room.floor && room.floor.trim() ? room.floor : 'Sin piso asignado'
+  const typeText = room.type === 'dorm' ? 'Dormitorio' : 'Privada'
+
+  return (
+    <article className={`room-item-card ${room.status === 'inactive' ? 'is-inactive-card' : ''}`}>
+      {/* Header */}
+      <div className="room-card-header-row">
+        <div className="room-card-icon-box">
+          <BedDouble size={20} />
+        </div>
+
+        <div className="room-card-title-col">
+          <div className="room-card-name-line">
+            <span className="room-card-name">{room.name}</span>
+            <span className={`room-status-badge ${statusBadgeClass}`}>{statusBadgeText}</span>
+          </div>
+          <div className="room-card-subtitle">
+            <DoorOpen size={13} style={{ color: '#94a3b8' }} />
+            <span>
+              {floorText} • {typeText}
+            </span>
+          </div>
+        </div>
+
+        {/* 3-dots Menu */}
+        <div className="room-menu-wrapper" ref={menuRef}>
+          <button
+            type="button"
+            className="room-card-menu-btn"
+            onClick={() => setMenuOpen(!menuOpen)}
+            title="Opciones de habitación"
+          >
+            <MoreVertical size={18} />
+          </button>
+          {menuOpen && (
+            <div className="room-menu-dropdown">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onEdit()
+                }}
+              >
+                <Edit3 size={14} /> Editar habitación
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onAddBed()
+                }}
+              >
+                <Plus size={14} /> Agregar cama
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false)
+                  onStatus()
+                }}
+              >
+                <Power size={14} />{' '}
+                {room.status === 'active' ? 'Desactivar habitación' : 'Activar habitación'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Fila de Tarifa */}
+      <div className="room-tariff-row">
+        <span className="room-tariff-label">{tariffLabel}</span>
+        <div className="room-tariff-value">
+          <span className="tariff-amount">{displayedPrice}</span>
+          <span className="tariff-unit">{tariffUnit}</span>
+        </div>
+      </div>
+
+      {/* Barra de Ocupación / Disponibilidad */}
+      <div className="room-avail-block">
+        <div
+          className={`room-avail-header ${
+            occupiedBeds > 0 ? 'avail-orange' : 'avail-green'
+          }`}
         >
-          <Power size={16} />
+          <span className="left-info">
+            <User size={13} />
+            {availLeftText}
+          </span>
+          <span className="right-info">{availRightText}</span>
+        </div>
+        <div className="room-progress-track">
+          <div
+            className={`room-progress-fill ${progressFillClass}`}
+            style={{ width: `${progressWidth}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Badges / Tags de Características */}
+      <div className="room-tags-row">
+        {tags.map((tag, idx) => (
+          <span key={idx} className="room-tag-pill">
+            {tag}
+          </span>
+        ))}
+      </div>
+
+      {/* Footer de la tarjeta */}
+      <div className="room-card-footer">
+        <div className="room-card-quick-actions">
+          <button type="button" title="Editar habitación" onClick={onEdit}>
+            <Edit3 size={15} />
+          </button>
+          <button
+            type="button"
+            title={room.status === 'active' ? 'Desactivar habitación' : 'Activar habitación'}
+            onClick={onStatus}
+          >
+            <Power size={15} />
+          </button>
+        </div>
+
+        <button
+          className="btn-manage-beds"
+          type="button"
+          onClick={onToggle}
+        >
+          {occupiedBeds === totalBeds && totalBeds > 0 ? 'Ver Huésped' : 'Gestionar Camas'}
+          <ChevronRight size={14} />
         </button>
       </div>
 
+      {/* Panel Expandido de Gestión de Camas */}
       {isExpanded && (
-        <div className="bed-panel">
-          <div className="bed-panel-header">
-            <span className="eyebrow">Mapa visual de camas</span>
-            <button className="small-button" type="button" onClick={onAddBed}>
-              <Plus size={15} /> Agregar cama
+        <div className="room-beds-expanded-section">
+          <div className="beds-expanded-header">
+            <strong>Mapa de camas ({room.beds.length})</strong>
+            <button className="btn-add-bed-compact" type="button" onClick={onAddBed}>
+              <Plus size={13} /> Agregar cama
             </button>
           </div>
 
           {room.maintenanceCount ? (
-            <p className="maintenance-note">
-              <Wrench size={14} style={{ display: 'inline', marginRight: '4px' }} />
-              {room.maintenanceCount} incidente{room.maintenanceCount === 1 ? '' : 's'} bloqueante{room.maintenanceCount === 1 ? '' : 's'} de mantenimiento
+            <p className="maintenance-note" style={{ margin: '0 0 10px', color: '#b91c1c', fontSize: 11 }}>
+              <Wrench size={13} style={{ display: 'inline', marginRight: 4 }} />
+              {room.maintenanceCount} incidente{room.maintenanceCount === 1 ? '' : 's'} bloqueante{room.maintenanceCount === 1 ? '' : 's'}
             </p>
           ) : null}
 
           {room.beds.length === 0 ? (
-            <p className="muted">Sin camas registradas en esta habitación.</p>
+            <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>
+              Sin camas registradas en esta habitación.
+            </p>
           ) : (
-            <div className="bed-grid">
+            <div className="expanded-beds-grid">
               {room.beds.map((bed) => {
                 const isBlocked = bed.maintenanceBlocked
                 const isOutOfService = bed.status !== 'active' || Boolean(bed.outOfServiceReason)
                 const isOccupied = bed.isAvailable === false && !isBlocked && !isOutOfService
-                const isCleaning = bed.cleaningPending
 
-                let statusLabel = 'Disponible hoy'
-                let statusColor = '#1b5e30'
-                let badgeStyle = {}
-
+                let statusDotColor = '#10b981'
+                let statusText = 'Libre'
                 if (isBlocked) {
-                  statusLabel = 'Mantenimiento (Bloqueada)'
-                  statusColor = '#806729'
-                  badgeStyle = { background: '#fff8df', borderColor: '#e8d8ae' }
+                  statusDotColor = '#ca8a04'
+                  statusText = 'Bloqueada'
                 } else if (isOutOfService) {
-                  statusLabel = `Fuera de servicio (${bed.outOfServiceReason || 'Inactiva'})`
-                  statusColor = '#b95e1e'
-                  badgeStyle = { background: '#f1f1eb', borderColor: '#dce3dc' }
+                  statusDotColor = '#ea580c'
+                  statusText = 'Fuera serv.'
                 } else if (isOccupied) {
-                  statusLabel = 'Ocupada hoy'
-                  statusColor = '#b9381e'
-                  badgeStyle = { background: '#fde8e4', borderColor: '#f0b4a4' }
-                } else if (isCleaning) {
-                  statusLabel = 'Pendiente de limpieza'
-                  statusColor = '#1e4c66'
-                  badgeStyle = { background: '#eaf2f6', borderColor: '#b6cee2' }
+                  statusDotColor = '#ef4444'
+                  statusText = 'Ocupada'
                 }
 
                 return (
-                  <div
-                    className={`bed-item ${isOutOfService || isBlocked ? 'bed-disabled' : ''}`}
-                    key={bed.id}
-                    style={badgeStyle}
-                  >
-                    <span className="bed-visual">
-                      <BedDouble size={20} />
-                    </span>
-                    <span>
-                      <strong>{bed.label}</strong>
-                      <small style={{ fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColor }} />
-                        {statusLabel}
-                      </small>
-                    </span>
-                    <button type="button" title="Ver detalle" onClick={() => onViewBed(bed)}>
-                      <Eye size={14} />
-                    </button>
-                    <button type="button" title="Editar cama" onClick={() => onEditBed(bed)}>
-                      <Edit3 size={14} />
-                    </button>
-                    <button type="button" title="Cambiar estado" onClick={() => onBedStatus(bed)}>
-                      <Power size={14} />
-                    </button>
+                  <div key={bed.id} className="expanded-bed-tile">
+                    <div className="expanded-bed-tile-info">
+                      <BedDouble size={16} color="#0d9488" />
+                      <div>
+                        <div className="bed-label">{bed.label}</div>
+                        <div className="bed-status-text">
+                          <span
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: '50%',
+                              background: statusDotColor,
+                              display: 'inline-block',
+                            }}
+                          />
+                          {statusText}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="expanded-bed-tile-actions">
+                      <button
+                        type="button"
+                        title="Ver detalle"
+                        onClick={() => onViewBed(bed)}
+                      >
+                        <Eye size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Editar cama"
+                        onClick={() => onEditBed(bed)}
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        title={
+                          bed.status === 'active' && !bed.outOfServiceReason
+                            ? 'Poner fuera de servicio'
+                            : 'Reactivar cama'
+                        }
+                        onClick={() => onBedStatus(bed)}
+                      >
+                        <Power size={13} />
+                      </button>
+                    </div>
                   </div>
                 )
               })}
@@ -656,7 +1007,7 @@ function RoomModal({
           <input
             value={draft.name}
             onChange={(event) => onChange({ ...editor, draft: { ...draft, name: event.target.value } })}
-            placeholder="Ej. Dormitorio Jaguar, Habitación Andes..."
+            placeholder="Ej. Dormitorio Jaguar, Habitación Bella..."
             required
             title="Ingresa el nombre de la habitación"
           />
@@ -686,7 +1037,13 @@ function RoomModal({
               value={draft.basePriceRoom === 0 ? '' : draft.basePriceRoom}
               placeholder="0"
               onChange={(event) =>
-                onChange({ ...editor, draft: { ...draft, basePriceRoom: event.target.value === '' ? 0 : Number(event.target.value) } })
+                onChange({
+                  ...editor,
+                  draft: {
+                    ...draft,
+                    basePriceRoom: event.target.value === '' ? 0 : Number(event.target.value),
+                  },
+                })
               }
               title="Precio base por noche"
             />
@@ -717,7 +1074,10 @@ function RoomModal({
                 onClick={() =>
                   onChange({
                     ...editor,
-                    newBeds: [...editor.newBeds, { label: `Cama ${editor.newBeds.length + 1}`, basePriceBed: 0 }],
+                    newBeds: [
+                      ...editor.newBeds,
+                      { label: `Cama ${editor.newBeds.length + 1}`, basePriceBed: 0 },
+                    ],
                   })
                 }
                 title="Añadir una cama"
@@ -726,12 +1086,16 @@ function RoomModal({
               </button>
             </div>
             {editor.newBeds.map((bed, index) => {
-              const bedTypeMatch = bed.label.match(/\((.*?)\)/);
-              const currentBedType = bedTypeMatch ? bedTypeMatch[1] : 'Unipersonal';
-              const baseLabel = bed.label.replace(/\s*\(.*?\)/, '') || `Cama ${index + 1}`;
-              
+              const bedTypeMatch = bed.label.match(/\((.*?)\)/)
+              const currentBedType = bedTypeMatch ? bedTypeMatch[1] : 'Unipersonal'
+              const baseLabel = bed.label.replace(/\s*\(.*?\)/, '') || `Cama ${index + 1}`
+
               return (
-                <div className="form-row" key={index} style={{ gridTemplateColumns: '1fr 1fr 1.5fr auto', alignItems: 'center' }}>
+                <div
+                  className="form-row"
+                  key={index}
+                  style={{ gridTemplateColumns: '1fr 1fr 1.5fr auto', alignItems: 'center' }}
+                >
                   <input
                     value={baseLabel}
                     disabled
@@ -753,11 +1117,14 @@ function RoomModal({
                   <input
                     type="number"
                     min="0"
-                    placeholder="Precio base de cama (BOB)"
+                    placeholder="Precio base cama (BOB)"
                     value={bed.basePriceBed === 0 ? '' : bed.basePriceBed}
                     onChange={(event) => {
                       const newBeds = [...editor.newBeds]
-                      newBeds[index] = { ...bed, basePriceBed: event.target.value === '' ? 0 : Number(event.target.value) }
+                      newBeds[index] = {
+                        ...bed,
+                        basePriceBed: event.target.value === '' ? 0 : Number(event.target.value),
+                      }
                       onChange({ ...editor, newBeds })
                     }}
                     title="Precio por noche para esta cama"
@@ -766,17 +1133,22 @@ function RoomModal({
                     type="button"
                     title="Eliminar cama"
                     onClick={() => {
-                       const newBeds = [...editor.newBeds];
-                       newBeds.splice(index, 1);
-                       // Update labels to maintain sequence
-                       newBeds.forEach((b, i) => {
-                          const tMatch = b.label.match(/\((.*?)\)/);
-                          const t = tMatch ? tMatch[1] : 'Unipersonal';
-                          b.label = `Cama ${i + 1} (${t})`;
-                       });
-                       onChange({ ...editor, newBeds });
+                      const newBeds = [...editor.newBeds]
+                      newBeds.splice(index, 1)
+                      newBeds.forEach((b, i) => {
+                        const tMatch = b.label.match(/\((.*?)\)/)
+                        const t = tMatch ? tMatch[1] : 'Unipersonal'
+                        b.label = `Cama ${i + 1} (${t})`
+                      })
+                      onChange({ ...editor, newBeds })
                     }}
-                    style={{ background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '8px' }}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--danger)',
+                      cursor: 'pointer',
+                      padding: '8px',
+                    }}
                   >
                     <X size={16} />
                   </button>
@@ -790,7 +1162,7 @@ function RoomModal({
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary-button" type="submit">
+          <button className="primary-button" style={{ background: '#f97316' }} type="submit">
             Guardar habitación
           </button>
         </div>
@@ -822,7 +1194,7 @@ function BedModal({
         </div>
         <label>
           Etiqueta de la cama
-          <input name="label" defaultValue={editor.bed?.label} placeholder="Cama A1, Litera Superior..." required />
+          <input name="label" defaultValue={editor.bed?.label} placeholder="Cama A1, Cama Doble..." required />
         </label>
         <label>
           Precio por noche (BOB)
@@ -832,7 +1204,7 @@ function BedModal({
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary-button" type="submit">
+          <button className="primary-button" style={{ background: '#f97316' }} type="submit">
             Guardar cama
           </button>
         </div>
@@ -880,7 +1252,7 @@ function BedDetail({ bed, onClose }: { bed: Bed; onClose: () => void }) {
           </p>
         </div>
         <div className="modal-actions" style={{ marginTop: '16px' }}>
-          <button className="primary-button" type="button" onClick={onClose}>
+          <button className="primary-button" style={{ background: '#f97316' }} type="button" onClick={onClose}>
             Cerrar
           </button>
         </div>
@@ -945,7 +1317,7 @@ function OutOfServiceModal({
           <button className="secondary-button" type="button" onClick={onClose}>
             Cancelar
           </button>
-          <button className="primary-button" style={{ background: 'var(--coral)' }} type="submit">
+          <button className="primary-button" style={{ background: '#ef4444' }} type="submit">
             Confirmar fuera de servicio
           </button>
         </div>

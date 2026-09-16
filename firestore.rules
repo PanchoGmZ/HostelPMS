@@ -144,16 +144,12 @@ service cloud.firestore {
         allow write: if isAdmin(establishmentId);
       }
 
-      // FIX #3 (MEDIO): se mantiene la creación directa desde el cliente
-      // (el trigger syncPurchaseStock hace el resto), pero ahora update/delete
-      // quedan bloqueados: nadie más que el trigger (Admin SDK) puede marcar
-      // stockProcessed o modificar una compra ya registrada.
+      // FIX #3 (ACTUALIZADO): la creación de compras ahora se realiza
+      // exclusivamente a través de /api/createPurchase (Admin SDK).
+      // El antiguo trigger syncPurchaseStock ya no es necesario.
       match /purchases/{purchaseId} {
         allow read: if isStaff(establishmentId);
-        allow create: if isStaff(establishmentId)
-          && request.resource.data.items is list
-          && request.resource.data.items.size() > 0;
-        allow update, delete: if false; // exclusivo Cloud Functions (Admin SDK)
+        allow create, update, delete: if false; // exclusivo backend (Admin SDK)
       }
 
       match /stockMovements/{movementId} {

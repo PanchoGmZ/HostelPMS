@@ -8,3 +8,5 @@ firebase-debug.log
 
 # Secrets
 serviceAccountKey.json
+/backups
+scripts/seed.production.local.env

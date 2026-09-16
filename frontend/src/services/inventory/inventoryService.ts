@@ -1,4 +1,5 @@
 import { collection, doc, getDocs, orderBy, query, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore'
+import { apiPost } from '../api/apiClient'
 import { db } from '../firebase/config'
 import type { Category, Product, PurchaseRecord } from '../../types/inventory'
 
@@ -43,16 +44,12 @@ export async function saveProduct(
 
 export async function createPurchase(
   establishmentId: string,
-  items: Array<{ productId: string; quantity: number; unitCost: number }>,
-  createdBy: string
+  items: Array<{ productId: string; quantity: number; unitCost: number }>
 ) {
-  const reference = doc(collection(db, `${base(establishmentId)}/purchases`))
-  await setDoc(reference, {
-    items,
-    createdBy,
-    stockProcessed: false,
-    createdAt: serverTimestamp(),
-  })
+  return await apiPost<{ success: boolean; purchaseId: string }>(
+    '/api/createPurchase',
+    { establishmentId, items }
+  )
 }
 
 export async function listPurchases(establishmentId: string): Promise<PurchaseRecord[]> {

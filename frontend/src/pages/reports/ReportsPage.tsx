@@ -10,9 +10,10 @@ import {
   LogIn,
   LogOut,
   Users,
+  RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../../context/useAuth'
-import { loadReports } from '../../services/reports/reportsService'
+import { loadReports, generateDailySummaryOnDemand } from '../../services/reports/reportsService'
 import type { DailySummary, ReportMetrics } from '../../types/reports'
 
 const PERIOD_OPTIONS = [
@@ -24,12 +25,14 @@ const PERIOD_OPTIONS = [
 export function ReportsPage() {
   const { session } = useAuth()
   const establishmentId = session?.establishmentId
+  const isAdmin = establishmentId ? (session?.roles?.[establishmentId] === 'admin') : false
 
   const [metrics, setMetrics] = useState<ReportMetrics | null>(null)
   const [summaries, setSummaries] = useState<DailySummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState(30)
+  const [generating, setGenerating] = useState(false)
 
   const load = useCallback(async () => {
     if (!establishmentId) return
@@ -69,19 +72,44 @@ export function ReportsPage() {
           <h1>Reportes del Hostel</h1>
           <p>Indicadores calculados a partir de los datos registrados en Firestore.</p>
         </div>
-        <div className="header-actions">
-          <CalendarDays size={16} color="var(--muted)" />
-          <select
-            className="filter-select"
-            value={period}
-            onChange={(e) => setPeriod(Number(e.target.value))}
-          >
-              {PERIOD_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
+        <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+          {isAdmin && (
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              onClick={async () => {
+                if (!establishmentId) return;
+                setGenerating(true);
+                try {
+                  await generateDailySummaryOnDemand(establishmentId);
+                  await load();
+                } catch (err: any) {
+                  setError(err.message || 'Error al generar reporte');
+                } finally {
+                  setGenerating(false);
+                }
+              }}
+              disabled={generating}
+            >
+              <RefreshCw size={14} className={generating ? 'spin' : ''} />
+              {generating ? 'Generando...' : 'Actualizar reporte'}
+            </button>
+          )}
+          
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <CalendarDays size={16} color="var(--muted)" />
+            <select
+              className="filter-select"
+              value={period}
+              onChange={(e) => setPeriod(Number(e.target.value))}
+            >
+                {PERIOD_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+          </div>
         </div>
       </header>
 
@@ -96,7 +124,7 @@ export function ReportsPage() {
       <div className="stay-notice" style={{ marginBottom: '16px' }}>
         <Info size={18} />
         <span>
-          Los <strong>resúmenes diarios</strong> son generados por el backend (Cloud Functions) al cierre de cada día.
+          Los <strong>resúmenes diarios</strong> son generados por el backend al cierre de cada día.
           Las métricas de <strong>ocupación</strong> e <strong>ingresos</strong> provienen de esos resúmenes.
         </span>
       </div>
@@ -113,26 +141,26 @@ export function ReportsPage() {
             <ReportMetric
               icon={CalendarDays}
               label="Total Reservas"
-              value={metrics?.reservations ?? 0}
-              note="Reservas registradas en Firestore"
+              value={metrics?.reservations === -1 ? '—' : (metrics?.reservations ?? 0)}
+              note="Reservas en los resúmenes diarios"
             />
             <ReportMetric
               icon={Users}
               label="Estadías Activas"
-              value={metrics?.activeStays ?? 0}
+              value={metrics?.activeStays === -1 ? '—' : (metrics?.activeStays ?? 0)}
               note="Estadías con status = active"
             />
             <ReportMetric
               icon={DollarSign}
               label={`Ingresos (${period}d)`}
-              value={`${metrics?.revenue?.toFixed(0) ?? 0} BOB`}
+              value={metrics?.revenue === -1 ? '—' : `${metrics?.revenue?.toFixed(0) ?? 0} BOB`}
               note="Suma de ingresos en resúmenes diarios"
             />
             <ReportMetric
               icon={BarChart3}
               label="Ocupación Último Día"
-              value={`${metrics?.occupancy ?? 0}%`}
-              note="Del resumen diario más reciente generado por backend"
+              value={metrics?.occupancy === -1 ? '—' : `${metrics?.occupancy ?? 0}%`}
+              note="Del resumen diario más reciente"
             />
           </section>
 
@@ -150,8 +178,7 @@ export function ReportsPage() {
                 <Clock size={28} />
                 <h2>Sin históricos diarios</h2>
                 <p>
-                  Los resúmenes diarios aparecerán aquí cuando el backend (Cloud Function de cierre diario)
-                  haya generado al menos un registro en la colección <code>dailySummaries</code>.
+                  Aún no hay datos históricos consolidados para este período.
                 </p>
               </div>
             ) : (

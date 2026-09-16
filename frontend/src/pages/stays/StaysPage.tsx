@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
+  ArrowDownAZ,
   BedDouble,
+  Calendar,
   CalendarCheck,
   CheckCircle2,
+  ChevronRight,
   CircleAlert,
   Eye,
   Filter,
+  Lock,
   LogIn,
   LogOut,
   Search,
@@ -24,6 +28,7 @@ import type { Stay, StayStatus } from '../../types/stays'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 import type { Reservation } from '../../types/reservations'
+import './StaysPage.css'
 
 function toLocalDateString(date: Date): string {
   const yyyy = date.getFullYear()
@@ -49,6 +54,15 @@ function formatDate(value?: { seconds: number } | null) {
     month: 'short',
     year: 'numeric',
   })
+}
+
+function formatDayMonthYearSplit(value?: { seconds: number } | null) {
+  if (!value?.seconds) return { dayMonth: '-', year: '' }
+  const d = new Date(value.seconds * 1000)
+  return {
+    dayMonth: d.toLocaleDateString('es-BO', { day: 'numeric', month: 'short' }),
+    year: d.getFullYear().toString()
+  }
 }
 
 function formatDateTime(value?: { seconds: number } | null) {
@@ -122,7 +136,7 @@ export function StaysPage() {
         q === '' ||
         stay.id.toLowerCase().includes(q) ||
         (primaryGuest && `${primaryGuest.firstName} ${primaryGuest.lastName}`.toLowerCase().includes(q)) ||
-        (primaryGuest && primaryGuest.documentNumber.toLowerCase().includes(q)) ||
+        (primaryGuest && primaryGuest.documentNumber?.toLowerCase().includes(q)) ||
         (room && room.name.toLowerCase().includes(q))
       return matchesStatus && matchesQuery
     })
@@ -152,6 +166,8 @@ export function StaysPage() {
     }
   }
 
+  const activeStaysCount = stays.filter((s) => s.status === 'active').length
+
   if (!establishmentId) {
     return (
       <div className="empty-state">
@@ -163,15 +179,22 @@ export function StaysPage() {
   }
 
   return (
-    <div className="dashboard-page stays-page">
-      <header className="page-header">
+    <div className="stays-page-container">
+      {/* Header */}
+      <header className="stays-top-header-wrapper">
         <div>
-          <span className="kicker">Huéspedes alojados</span>
+          <div className="stays-breadcrumb-row">
+            <span className="breadcrumb-muted">HUÉSPEDES ALOJADOS</span>
+            <span className="breadcrumb-dot">•</span>
+            <span className="breadcrumb-active-pill">
+              <span className="dot" /> {activeStaysCount} Activas ahora
+            </span>
+          </div>
           <h1>Estadías</h1>
-          <p>Flujo completo: Reserva → Check-in → Estadía activa → Check-out</p>
+          <p>Flujo de estadía: Reserva → Check-in → <strong>Estadía activa</strong> → Check-out</p>
         </div>
         <button
-          className="primary-button compact-button"
+          className="btn-checkin"
           type="button"
           onClick={() => setShowCheckInModal(true)}
         >
@@ -194,17 +217,26 @@ export function StaysPage() {
         </div>
       )}
 
-      <div className="stay-notice" style={{ marginBottom: '16px' }}>
-        <ShieldCheck size={18} />
-        <span>
-          Las transacciones de check-in y check-out son procesadas y validadas por el backend (Cloud Functions).
+      {/* Banner Sincronización */}
+      <div className="stays-sync-banner">
+        <div className="stays-sync-banner-content">
+          <span className="sync-shield-icon-stays">
+            <ShieldCheck size={20} />
+          </span>
+          <div className="stays-sync-texts">
+            <strong>Validación y Procesamiento Seguro</strong>
+            <span>Las transacciones de check-in y check-out son procesadas y validadas por el backend (Cloud Functions).</span>
+          </div>
+        </div>
+        <span className="sync-atomic-badge">
+          <Lock size={12} /> Transacción atómica
         </span>
       </div>
 
       {/* Toolbar */}
-      <div className="guest-toolbar">
-        <div className="toolbar-search">
-          <Search size={16} color="var(--muted)" />
+      <div className="stays-toolbar-row">
+        <div className="stays-search-box">
+          <Search size={16} color="#94a3b8" />
           <input
             type="text"
             placeholder="Buscar por huésped, doc o habitación..."
@@ -212,20 +244,27 @@ export function StaysPage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="toolbar-search" style={{ flex: '0 0 auto' }}>
-          <Filter size={16} color="var(--muted)" />
-          <select
-            className="filter-select"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'all' | StayStatus)}
-          >
-            <option value="active">Activas</option>
-            <option value="checked_out">Finalizadas (Check-out)</option>
-            <option value="all">Todas las estadías</option>
-          </select>
+        <div className="stays-filters-group">
+          <div className="stays-filter-select-wrapper">
+            <Filter size={14} color="#64748b" />
+            <label style={{ margin: '0 4px', fontSize: 13 }}>Estado:</label>
+            <select
+              className="stays-filter-select"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | StayStatus)}
+            >
+              <option value="active">Activas ({activeStaysCount})</option>
+              <option value="checked_out">Finalizadas (Check-out)</option>
+              <option value="all">Todas las estadías</option>
+            </select>
+          </div>
+          <button className="btn-recents" type="button">
+            <ArrowDownAZ size={14} /> Recientes
+          </button>
         </div>
       </div>
 
+      {/* Listado de Estadías */}
       {loading ? (
         <div className="screen-state inline-state">
           <span className="loader" />
@@ -244,7 +283,7 @@ export function StaysPage() {
           <p>No se encontraron estadías con el filtro seleccionado.</p>
         </div>
       ) : (
-        <div className="stay-list">
+        <div className="stays-list-container">
           {filteredStays.map((stay) => {
             const primaryGuest = guests.find((g) => stay.guestIds.includes(g.id))
             const room = rooms.find((r) => r.id === stay.roomId)
@@ -253,68 +292,125 @@ export function StaysPage() {
               .map((b) => b.label)
               .join(', ')
 
+            const checkIn = formatDayMonthYearSplit(stay.checkInDate)
+            
+            // Determinar si mostrar fecha de salida prevista o real
+            const outDateSource = stay.status === 'checked_out' ? stay.actualCheckOutDate : stay.expectedCheckOutDate
+            const checkOut = formatDayMonthYearSplit(outDateSource)
+
+            // Calcular noches
+            const tIn = stay.checkInDate?.seconds ? stay.checkInDate.seconds * 1000 : 0
+            const tOut = outDateSource?.seconds ? outDateSource.seconds * 1000 : 0
+            const diffDays = tIn && tOut ? Math.max(1, Math.ceil((tOut - tIn) / (1000 * 3600 * 24))) : 1
+
             return (
-              <article className="stay-row" key={stay.id}>
-                <div className="stay-icon">
-                  <BedDouble size={19} />
+              <article
+                className={`stay-item-card ${stay.status !== 'active' ? 'is-inactive-card' : ''}`}
+                key={stay.id}
+              >
+                {/* Izquierda: Huésped info */}
+                <div className="stay-item-guest-col">
+                  <div className="stay-icon-box">
+                    <BedDouble size={24} />
+                  </div>
+                  <div className="stay-guest-info">
+                    <div className="stay-guest-name-row">
+                      <span className="stay-guest-name">
+                        {primaryGuest ? `${primaryGuest.firstName} ${primaryGuest.lastName}` : 'Huésped sin identificar'}
+                        {stay.guestIds.length > 1 && ` (+${stay.guestIds.length - 1})`}
+                      </span>
+                      <span
+                        className={`stay-status-pill ${
+                          stay.status === 'active' ? 'status-active' : 'status-inactive'
+                        }`}
+                      >
+                        <span className="dot" /> {stay.status === 'active' ? 'Activa' : 'Finalizada'}
+                      </span>
+                    </div>
+                    <div className="stay-guest-subinfo">
+                      <span className="room-name">
+                        Hab. {room?.name ?? stay.roomId}
+                      </span>
+                      {bedLabels && (
+                        <>
+                          <span className="dot-sep">•</span>
+                          <span className="bed-name">Camas: {bedLabels}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="stay-info">
-                  <strong>
-                    {primaryGuest ? `${primaryGuest.firstName} ${primaryGuest.lastName}` : 'Huésped sin identificar'}
-                    {stay.guestIds.length > 1 && ` (+${stay.guestIds.length - 1})`}
-                  </strong>
-                  <small>
-                    Hab. {room?.name ?? stay.roomId} {bedLabels ? `(Camas: ${bedLabels})` : ''}
-                  </small>
+                {/* Medio: Fechas y noches */}
+                <div className="stay-item-dates-col">
+                  <div className="date-block">
+                    <small>
+                      <Calendar size={13} /> CHECK-IN
+                    </small>
+                    <strong>
+                      {checkIn.dayMonth}<br />{checkIn.year}
+                    </strong>
+                  </div>
+
+                  <div className="nights-bubble">
+                    <span className="nights-bubble-text">{diffDays} noches</span>
+                    <ChevronRight size={14} />
+                  </div>
+
+                  <div className="date-block">
+                    <small>
+                      <Calendar size={13} /> {stay.status === 'checked_out' ? 'SALIDA REALIZADA' : 'SALIDA PREVISTA'}
+                    </small>
+                    <strong>
+                      {checkOut.dayMonth}<br />{checkOut.year}
+                    </strong>
+                  </div>
                 </div>
 
-                <div className="stay-dates">
-                  <small>Check-in</small>
-                  <strong>{formatDate(stay.checkInDate)}</strong>
-                </div>
-
-                <div className="stay-dates">
-                  <small>
-                    {stay.status === 'checked_out' ? 'Salida realizada' : 'Salida prevista'}
-                  </small>
-                  <strong>
-                    {stay.status === 'checked_out'
-                      ? formatDate(stay.actualCheckOutDate)
-                      : formatDate(stay.expectedCheckOutDate)}
-                  </strong>
-                </div>
-
-                <div>
-                  <span className={`status-badge ${stay.status === 'active' ? 'available' : 'inactive'}`}>
-                    {stay.status === 'active' ? 'Activa' : 'Finalizada'}
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedStayDetail(stay)}
-                  className="secondary-button compact-button"
-                  title="Ver detalle de estadía"
-                >
-                  <Eye size={15} /> Detalle
-                </button>
-
-                {stay.status === 'active' && (
+                {/* Derecha: Acciones */}
+                <div className="stay-item-actions-col">
                   <button
+                    className="btn-detalle"
                     type="button"
-                    onClick={() => setStayToCheckout(stay)}
-                    className="danger-button compact-button"
-                    title="Realizar check-out"
+                    title="Ver detalle"
+                    onClick={() => setSelectedStayDetail(stay)}
                   >
-                    <LogOut size={15} /> Check-out
+                    <Eye size={16} /> Detalle
                   </button>
-                )}
+                  <button className="btn-folio" type="button" disabled>
+                    Folio & Consumos
+                  </button>
+
+                  {stay.status === 'active' && (
+                    <button
+                      className="btn-checkout"
+                      type="button"
+                      title="Realizar check-out"
+                      onClick={() => setStayToCheckout(stay)}
+                    >
+                      <LogOut size={16} /> Check-out
+                      <span className="btn-subtext">Finalizar</span>
+                    </button>
+                  )}
+                </div>
               </article>
             )
           })}
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="stays-page-footer">
+        <div>
+          Mostrando <strong>{filteredStays.length}</strong> estadía{filteredStays.length !== 1 ? 's' : ''}{' '}
+          {statusFilter === 'active' ? 'activas' : ''} registrada{filteredStays.length !== 1 ? 's' : ''}
+        </div>
+        <div className="stays-footer-links">
+          <span className="stable-badge">
+            <span className="green-dot" /> Sincronizado con Cloud Functions
+          </span>
+        </div>
+      </footer>
 
       {/* Modal de Check-In */}
       {showCheckInModal && (

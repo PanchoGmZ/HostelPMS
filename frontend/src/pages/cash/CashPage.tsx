@@ -15,7 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../../context/useAuth'
-import { addCashMovement, closeCashShift, listCashShifts, openCashShift } from '../../services/cash/cashService'
+import { addCashMovement, calculateCashSummary, closeCashShift, listCashShifts, openCashShift } from '../../services/cash/cashService'
 import { addMovementSchema, closeShiftSchema, openShiftSchema } from '../../schemas/cashSchema'
 import type { CashShift } from '../../types/cash'
 
@@ -66,24 +66,7 @@ export function CashPage() {
 
 
   // Active shift calculations
-  const activeCashSummary = useMemo(() => {
-    if (!activeShift) return { cashIn: 0, cashOut: 0, expectedTotal: 0 }
-    let cashIn = 0
-    let cashOut = 0
-
-    activeShift.movements?.forEach((m) => {
-      if (m.method === 'cash' || !m.method) {
-        if (m.type === 'in' || m.type === 'pago_folio') {
-          cashIn += m.amount ?? 0
-        } else if (m.type === 'out') {
-          cashOut += m.amount ?? 0
-        }
-      }
-    })
-
-    const expectedTotal = (activeShift.openingAmount ?? 0) + cashIn - cashOut
-    return { cashIn, cashOut, expectedTotal }
-  }, [activeShift])
+  const activeCashSummary = useMemo(() => calculateCashSummary(activeShift), [activeShift])
 
   if (!establishmentId) {
     return (

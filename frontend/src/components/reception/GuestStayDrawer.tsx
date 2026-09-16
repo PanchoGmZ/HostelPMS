@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   X,
   User,
@@ -55,6 +55,14 @@ export function GuestStayDrawer({
   onCheckout,
 }: GuestStayDrawerProps) {
   const [showFolioDetail, setShowFolioDetail] = useState(false)
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = originalOverflow
+    }
+  }, [])
 
   const guestFullName = guest ? `${guest.firstName} ${guest.lastName}` : 'Huésped alojado'
   const balance = folio?.balance ?? 0

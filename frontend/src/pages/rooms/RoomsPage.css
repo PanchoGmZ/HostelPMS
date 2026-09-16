@@ -1,0 +1,905 @@
+/* RoomsPage.css - Estilos modernos basados en el diseño de referencia */
+
+.rooms-page-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px 32px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  color: #1e293b;
+  font-family: inherit;
+}
+
+/* Header & Breadcrumb */
+.rooms-top-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.rooms-breadcrumb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.breadcrumb-tag {
+  color: #ea580c;
+  background: #fff7ed;
+  border: 1px solid #ffedd5;
+  padding: 2px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.breadcrumb-sub {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.rooms-top-header h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.02em;
+}
+
+.rooms-top-header p {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0;
+  max-width: 650px;
+  line-height: 1.45;
+}
+
+.btn-new-room {
+  background: #f97316;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(249, 115, 22, 0.25);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-new-room:hover {
+  background: #ea580c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(249, 115, 22, 0.35);
+}
+
+/* Banner de Sincronización */
+.rooms-sync-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #fefce8;
+  border: 1px solid #fef08a;
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 12px;
+  color: #713f12;
+}
+
+.rooms-sync-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.rooms-sync-banner-content strong {
+  color: #451a03;
+  font-weight: 700;
+}
+
+.sync-shield-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #fef08a;
+  color: #ca8a04;
+  flex-shrink: 0;
+}
+
+.sync-connected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sync-connected-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+/* Fila de Métricas / KPI Cards */
+.rooms-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 1024px) {
+  .rooms-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .rooms-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rooms-metric-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+.rooms-metric-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rooms-metric-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.metric-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.metric-pill-badge.pill-free {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.metric-pill-badge.pill-occupied {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.metric-pill-badge.pill-maintenance {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.metric-icon-circle {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+}
+
+.rooms-metric-card-value {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.rooms-metric-card-value .metric-big-num {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: #0f172a;
+}
+
+.rooms-metric-card-value .metric-big-num.text-green {
+  color: #059669;
+}
+
+.rooms-metric-card-value .metric-unit {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.rooms-metric-bar-track {
+  width: 100%;
+  height: 4px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.rooms-metric-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* Toolbar de Filtros y Búsqueda */
+.rooms-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 8px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  flex-wrap: wrap;
+}
+
+.rooms-search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 280px;
+}
+
+.rooms-search-box input {
+  border: none;
+  background: transparent;
+  width: 100%;
+  font-size: 13px;
+  color: #1e293b;
+  outline: none;
+}
+
+.rooms-search-box input::placeholder {
+  color: #94a3b8;
+}
+
+.rooms-filters-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rooms-filter-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 4px 8px;
+}
+
+.rooms-filter-select {
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #334155;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.rooms-view-toggle {
+  display: flex;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #f8fafc;
+}
+
+.view-toggle-btn {
+  background: transparent;
+  border: none;
+  padding: 6px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.view-toggle-btn.active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+/* Grid de Habitaciones */
+.rooms-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+  gap: 16px;
+}
+
+.rooms-cards-grid.list-view {
+  grid-template-columns: 1fr;
+}
+
+/* Tarjeta Individual de Habitación */
+.room-item-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  position: relative;
+}
+
+.room-item-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.room-item-card.is-inactive-card {
+  opacity: 0.65;
+}
+
+/* Header de la tarjeta */
+.room-card-header-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.room-card-icon-box {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  color: #0d9488;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.room-card-title-col {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-card-name-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 2px;
+}
+
+.room-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.room-status-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+.room-status-badge.badge-available {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.room-status-badge.badge-occupied {
+  background: #fff7ed;
+  color: #ea580c;
+}
+
+.room-status-badge.badge-partial {
+  background: #fef3c7;
+  color: #d97706;
+}
+
+.room-status-badge.badge-maintenance {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.room-status-badge.badge-inactive {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.room-card-subtitle {
+  font-size: 12px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.room-menu-wrapper {
+  position: relative;
+}
+
+.room-card-menu-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.room-card-menu-btn:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.room-menu-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 170px;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.room-menu-dropdown button {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  color: #334155;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.room-menu-dropdown button:hover {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
+/* Fila de Tarifa */
+.room-tariff-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 0;
+}
+
+.room-tariff-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.room-tariff-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.room-tariff-value .tariff-amount {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.room-tariff-value .tariff-unit {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* Barra de Ocupación / Disponibilidad */
+.room-avail-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.room-avail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.room-avail-header .left-info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.room-avail-header .right-info {
+  font-size: 11px;
+}
+
+.room-avail-header.avail-green {
+  color: #059669;
+}
+
+.room-avail-header.avail-orange {
+  color: #ea580c;
+}
+
+.room-avail-header.avail-neutral {
+  color: #64748b;
+}
+
+.room-progress-track {
+  width: 100%;
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.room-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.room-progress-fill.fill-green {
+  background: #10b981;
+}
+
+.room-progress-fill.fill-orange {
+  background: #f97316;
+}
+
+.room-progress-fill.fill-red {
+  background: #ef4444;
+}
+
+/* Badges / Tags de Características */
+.room-tags-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 24px;
+}
+
+.room-tag-pill {
+  background: #f8fafc;
+  border: 1px solid #f1f5f9;
+  color: #64748b;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+/* Footer de la tarjeta */
+.room-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.room-card-quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.room-card-quick-actions button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94a3b8;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.room-card-quick-actions button:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.btn-manage-beds {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.btn-manage-beds:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+/* Sección expandida de gestión de camas */
+.room-beds-expanded-section {
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  margin: 10px -20px -18px -20px;
+  padding: 16px 20px;
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+}
+
+.beds-expanded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.beds-expanded-header strong {
+  font-size: 12px;
+  color: #334155;
+}
+
+.btn-add-bed-compact {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.btn-add-bed-compact:hover {
+  background: #f1f5f9;
+}
+
+.expanded-beds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+
+.expanded-bed-tile {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.expanded-bed-tile-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.expanded-bed-tile-info .bed-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expanded-bed-tile-info .bed-status-text {
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #64748b;
+}
+
+.expanded-bed-tile-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.expanded-bed-tile-actions button {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  border-radius: 4px;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.expanded-bed-tile-actions button:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+/* Tarjeta Dashed "Crear nueva habitación" */
+.room-create-card-placeholder {
+  border: 2px dashed #cbd5e1;
+  background: #ffffff;
+  border-radius: 14px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.room-create-card-placeholder:hover {
+  border-color: #f97316;
+  background: #fffbf8;
+}
+
+.create-card-icon-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+  transition: all 0.15s ease;
+}
+
+.room-create-card-placeholder:hover .create-card-icon-circle {
+  background: #ffedd5;
+  color: #ea580c;
+}
+
+.room-create-card-placeholder h3 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+}
+
+.room-create-card-placeholder p {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.45;
+  margin: 0 0 14px 0;
+  max-width: 240px;
+}
+
+.create-card-action-link {
+  color: #ea580c;
+  font-weight: 700;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.room-create-card-placeholder:hover .create-card-action-link {
+  text-decoration: underline;
+}
+
+/* Footer de la página */
+.rooms-page-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 20px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #94a3b8;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.rooms-page-footer a,
+.rooms-page-footer span {
+  color: #64748b;
+  text-decoration: none;
+}
+
+.rooms-footer-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rooms-footer-links .stable-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #059669;
+  font-weight: 600;
+}
+
+.rooms-footer-links .stable-badge .green-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+}

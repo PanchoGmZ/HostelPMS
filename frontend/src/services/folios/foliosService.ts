@@ -1,23 +1,21 @@
 import { collection, getDocs, query, where } from 'firebase/firestore'
-import { getFunctions, httpsCallable } from 'firebase/functions'
+
 import { db } from '../firebase/config'
-import type { AddConsumptionPayload, Charge, Folio, Payment } from '../../types/folios'
+import { apiPost } from '../api/apiClient'
+import type { AddConsumptionPayload, Folio } from '../../types/folios'
 
 
 
 const foliosRef = (establishmentId: string) => collection(db, `establishments/${establishmentId}/folios`)
 
 async function populateFolioDetails(folioDocument: import('firebase/firestore').DocumentSnapshot): Promise<Folio> {
-  const base = { id: folioDocument.id, ...folioDocument.data() } as Folio
-  const [charges, payments] = await Promise.all([
-    getDocs(query(collection(folioDocument.ref, 'charges'), where('status', '!=', 'voided'))),
-    getDocs(query(collection(folioDocument.ref, 'payments'), where('status', '!=', 'refunded'))),
-  ])
-  return {
-    ...base,
-    charges: charges.docs.map((item) => ({ id: item.id, ...item.data() })) as Charge[],
-    payments: payments.docs.map((item) => ({ id: item.id, ...item.data() })) as Payment[],
-  }
+  const data = folioDocument.data();
+  return { 
+    id: folioDocument.id, 
+    ...data,
+    charges: data?.charges || [],
+    payments: data?.payments || [],
+  } as Folio;
 }
 
 export async function listFolios(establishmentId: string): Promise<Folio[]> {
@@ -33,13 +31,10 @@ export async function getFolioByStayId(establishmentId: string, stayId: string):
 }
 
 export async function addConsumption(data: AddConsumptionPayload) {
-  const callable = httpsCallable<AddConsumptionPayload, { success: boolean; message: string }>(
-    getFunctions(),
-    'addConsumption'
+  return await apiPost<{ success: boolean; message: string; chargeId: string; paymentId?: string }>(
+    '/api/addConsumption',
+    data
   )
-  return (await callable(data)).data
 }
 
 export const addChargeToFolio = addConsumption
-
-

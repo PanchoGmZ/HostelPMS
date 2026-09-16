@@ -1,5 +1,6 @@
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
-import { getFunctions, httpsCallable } from 'firebase/functions'
+
+import { apiPost } from '../api/apiClient'
 import { db } from '../firebase/config'
 import type { AddMovementPayload, CashMovement, CashShift, CloseShiftPayload, OpenShiftPayload } from '../../types/cash'
 
@@ -18,26 +19,42 @@ export async function listCashShifts(establishmentId: string): Promise<CashShift
 }
 
 export async function openCashShift(data: OpenShiftPayload) {
-  const callable = httpsCallable<OpenShiftPayload, { success: boolean; shiftId: string }>(
-    getFunctions(),
-    'openCashShift'
+  return await apiPost<{ success: boolean; message: string }>(
+    '/api/openCashShift',
+    data
   )
-  return (await callable(data)).data
 }
 
 export async function closeCashShift(data: CloseShiftPayload) {
-  const callable = httpsCallable<CloseShiftPayload, { success: boolean; shiftId: string; discrepancy: number }>(
-    getFunctions(),
-    'closeCashShift'
+  return await apiPost<{ success: boolean; shiftId: string; discrepancy: number }>(
+    '/api/closeCashShift',
+    data
   )
-  return (await callable(data)).data
 }
 
 export async function addCashMovement(data: AddMovementPayload) {
-  const callable = httpsCallable<AddMovementPayload, { success: boolean; movementId: string }>(
-    getFunctions(),
-    'addCashMovement'
+  return await apiPost<{ success: boolean; movementId: string }>(
+    '/api/addCashMovement',
+    data
   )
-  return (await callable(data)).data
+}
+
+export function calculateCashSummary(activeShift: CashShift | undefined) {
+  if (!activeShift) return { cashIn: 0, cashOut: 0, expectedTotal: 0 }
+  let cashIn = 0
+  let cashOut = 0
+
+  activeShift.movements?.forEach((m) => {
+    if (m.method === 'cash' || !m.method) {
+      if (m.type === 'in' || m.type === 'pago_folio') {
+        cashIn += m.amount ?? 0
+      } else if (m.type === 'out') {
+        cashOut += m.amount ?? 0
+      }
+    }
+  })
+
+  const expectedTotal = (activeShift.openingAmount ?? 0) + cashIn - cashOut
+  return { cashIn, cashOut, expectedTotal }
 }
 

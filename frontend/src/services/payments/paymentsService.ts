@@ -1,12 +1,18 @@
-import { getFunctions, httpsCallable } from 'firebase/functions'
+import { apiPost } from '../api/apiClient'
 import type { RecordPaymentPayload } from '../../types/folios'
 
 export async function recordPayment(data: RecordPaymentPayload) {
-  const callable = httpsCallable<RecordPaymentPayload, { success: boolean; paymentId: string }>(
-    getFunctions(),
-    'recordPayment'
+  return await apiPost<{ success: boolean; paymentId: string }>(
+    '/api/recordPayment',
+    data
   )
-  return (await callable(data)).data
+}
+
+export async function recordRefund(data: { establishmentId: string, stayId: string, paymentId: string, amount: number }) {
+  return await apiPost<{ success: boolean; refundId: string }>(
+    '/api/recordRefund',
+    data
+  )
 }
 
 export const processPayment = recordPayment
