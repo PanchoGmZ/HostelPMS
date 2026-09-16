@@ -206,9 +206,20 @@ export function RoomsPage() {
           outOfServiceReason: null,
         })
       }
+      
+      if (roomEditor.id) {
+        setRooms((prev) =>
+          prev.map((r) =>
+            r.id === roomEditor.id ? { ...r, ...roomEditor.draft } : r
+          )
+        )
+      }
+
       setRoomEditor(null)
       setSuccessMessage('Habitación guardada exitosamente.')
-      await reload()
+      
+      // Sincronización de fondo (sin mostrar loading para mantener respuesta inmediata en UI)
+      void listRooms(establishmentId).then(setRooms)
     } catch {
       setError('No se pudo guardar la habitación. Verifica tus permisos.')
     }
@@ -240,9 +251,27 @@ export function RoomsPage() {
         },
         bedEditor.bed?.id
       )
+
+      setRooms((prev) =>
+        prev.map((r) => {
+          if (r.id === bedEditor.roomId) {
+            let updatedBeds = [...r.beds]
+            if (bedEditor.bed?.id) {
+              updatedBeds = updatedBeds.map((b) =>
+                b.id === bedEditor.bed?.id ? { ...b, label, basePriceBed } : b
+              )
+            }
+            return { ...r, beds: updatedBeds }
+          }
+          return r
+        })
+      )
+
       setBedEditor(null)
       setSuccessMessage('Cama guardada exitosamente.')
-      await reload()
+      
+      // Sincronización de fondo sin flash
+      void listRooms(establishmentId).then(setRooms)
     } catch {
       setError('No se pudo guardar la cama.')
     }
@@ -686,13 +715,18 @@ function RoomCardItem({
   }
 
   // Tariff calculation
-  const tariffLabel =
-    room.type === 'dorm' ? 'TARIFA CAMA' : room.basePriceRoom > 0 ? 'TARIFA BASE' : 'TARIFA'
-  const firstBedPrice = room.beds.find((b) => b.basePriceBed > 0)?.basePriceBed
-  const displayedPrice =
-    room.type === 'dorm' && firstBedPrice != null
-      ? firstBedPrice
-      : room.basePriceRoom
+  let tariffLabel = 'TARIFA'
+  let displayedPrice = 0
+
+  if (room.type === 'dorm') {
+    tariffLabel = 'TARIFA CAMA'
+    const firstBedPrice = room.beds.find((b) => b.basePriceBed > 0)?.basePriceBed
+    displayedPrice = firstBedPrice ?? 0
+  } else {
+    tariffLabel = room.basePriceRoom > 0 ? 'TARIFA BASE' : 'TARIFA'
+    displayedPrice = room.basePriceRoom ?? 0
+  }
+
   const tariffUnit =
     displayedPrice > 0
       ? room.type === 'dorm'
