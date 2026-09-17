@@ -30,11 +30,13 @@ export interface Reservation {
   createdAt?: { seconds: number }
   updatedAt?: { seconds: number }
   lines?: ReservationLine[]
+  commissionPercent?: number
+  guestCount?: number
 }
 
 export interface CreateReservationPayload {
   establishmentId: string
-  guestId: string
+  guestId?: string
   saleMode: 'bed' | 'full_room'
   roomId: string
   bedIds: string[]
@@ -43,6 +45,8 @@ export interface CreateReservationPayload {
   pricePerNight: Record<string, Record<string, number>>
   channel: string
   commissionPercent?: number
+  guestCount?: number
+  guestIds?: string[]
 }
 
 export interface CancelReservationPayload {
@@ -50,4 +54,3 @@ export interface CancelReservationPayload {
   reservationId: string
   reason?: string
 }
-

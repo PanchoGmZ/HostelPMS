@@ -787,6 +787,8 @@ function ReservationModal({
   const [beds, setBeds] = useState<string[]>([])
   const [channel, setChannel] = useState('reception')
   const [commissionPercent, setCommissionPercent] = useState<number | ''>('')
+  const [guestCount, setGuestCount] = useState<number>(1)
+  const [guestIds, setGuestIds] = useState<string[]>([])
 
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -808,6 +810,9 @@ function ReservationModal({
 
   // Automatic full room bed selection
   useEffect(() => {
+    if (room?.type === 'private') {
+      setSaleMode('full_room')
+    }
     if (saleMode === 'full_room' && room) {
       const allActiveBedIds = room.beds.filter((b) => b.status === 'active').map((b) => b.id)
       setBeds(allActiveBedIds)
@@ -830,12 +835,16 @@ function ReservationModal({
   const estimatedTotal = useMemo(() => {
     if (nights <= 0 || !room) return 0
     if (saleMode === 'full_room') {
+      if (room.type === 'private') {
+        const base = room.priceByGuestCount?.[String(guestCount)] ?? room.basePriceRoom ?? 0
+        return base * nights
+      }
       return (room.basePriceRoom ?? 0) * nights
     }
     const selectedBeds = room.beds.filter((b) => beds.includes(b.id))
     const pricePerNightSum = selectedBeds.reduce((sum, b) => sum + (b.basePriceBed ?? room.basePriceRoom ?? 0), 0)
     return pricePerNightSum * nights
-  }, [nights, room, saleMode, beds])
+  }, [nights, room, saleMode, beds, guestCount])
 
   const toggleBed = (bedId: string) => {
     if (saleMode === 'full_room') return
@@ -878,6 +887,8 @@ function ReservationModal({
       checkOut,
       channel,
       commissionPercent: commissionPercent === '' ? undefined : commissionPercent,
+      guestCount,
+      guestIds: guestIds.filter(id => id.trim() !== ''),
     })
 
     if (!validation.success) {
@@ -904,7 +915,12 @@ function ReservationModal({
         bedId,
         Object.fromEntries(
           dates.map((date) => {
-            const basePrice = room.beds.find((b) => b.id === bedId)?.basePriceBed ?? room.basePriceRoom ?? 0
+            let basePrice = 0;
+            if (saleMode === 'full_room' && room.type === 'private') {
+              basePrice = room.priceByGuestCount?.[String(guestCount)] ?? room.basePriceRoom ?? 0
+            } else {
+              basePrice = room.beds.find((b) => b.id === bedId)?.basePriceBed ?? room.basePriceRoom ?? 0
+            }
             return [date, basePrice * (1 + commRate)]
           })
         ),
@@ -923,6 +939,8 @@ function ReservationModal({
         checkOut,
         pricePerNight,
         channel,
+        guestCount,
+        guestIds,
         ...(commissionPercent !== '' ? { commissionPercent } : {}),
       })
       onSaved()
@@ -989,7 +1007,83 @@ function ReservationModal({
           )}
         </div>
 
+        {room?.type === 'private' && (
+          <div style={{ display: 'grid', gap: '6px', background: 'var(--paper)', padding: 12, borderRadius: 8, border: '1px solid var(--line)' }}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--text)' }}>Grupo (Habitación Privada)</h4>
+            
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span>Cantidad de ocupantes ({room.maxGuests ? `Máx ${room.maxGuests}` : 'Sin límite'})</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => setGuestCount((c) => Math.max(1, c - 1))}
+                  style={{ padding: '4px 8px' }}
+                >
+                  -
+                </button>
+                <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{guestCount}</span>
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => setGuestCount((c) => Math.min(room.maxGuests || 99, c + 1))}
+                  style={{ padding: '4px 8px' }}
+                >
+                  +
+                </button>
+              </div>
+            </label>
+
+            <span className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>Acompañantes registrados (opcional):</span>
+            {guestIds.map((companionId, idx) => {
+              return (
+                <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                  <select
+                    value={companionId}
+                    onChange={(e) => {
+                      const newIds = [...guestIds]
+                      newIds[idx] = e.target.value
+                      setGuestIds(newIds)
+                    }}
+                    style={{ flex: 1, margin: 0, fontSize: 12, padding: '4px 8px' }}
+                  >
+                    <option value="">Selecciona un huésped...</option>
+                    {filteredGuests.map((g) => (
+                      <option key={g.id} value={g.id} disabled={g.id === guestId || guestIds.includes(g.id)}>
+                        {g.firstName} {g.lastName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newIds = [...guestIds]
+                      newIds.splice(idx, 1)
+                      setGuestIds(newIds)
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: 4 }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )
+            })}
+            
+            {guestIds.length < guestCount - 1 && (
+              <button
+                type="button"
+                className="secondary-button compact-button"
+                onClick={() => setGuestIds([...guestIds, ''])}
+                style={{ alignSelf: 'flex-start', marginTop: 4 }}
+              >
+                + Añadir acompañante
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Modo de venta */}
+        {room?.type !== 'private' && (
         <div style={{ display: 'grid', gap: '6px' }}>
           <label>Modo de venta</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -1014,6 +1108,7 @@ function ReservationModal({
             </button>
           </div>
         </div>
+        )}
 
         {/* Habitación */}
         <label>
@@ -1023,6 +1118,8 @@ function ReservationModal({
             onChange={(event) => {
               setRoomId(event.target.value)
               setBeds([])
+              setGuestCount(1)
+              setGuestIds([])
             }}
           >
             {rooms.map((item) => (
@@ -1091,6 +1188,7 @@ function ReservationModal({
         )}
 
         {/* Selección de Camas */}
+        {room?.type !== 'private' && (
         <div className="bed-choice" style={{ display: 'grid', gap: '8px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span className="eyebrow">
@@ -1136,6 +1234,7 @@ function ReservationModal({
             </div>
           )}
         </div>
+        )}
 
         {/* Resumen de Tarifas & Total Estimado */}
         <div
@@ -1151,7 +1250,7 @@ function ReservationModal({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
             <span>Noches: {nights}</span>
-            <span>Camas: {beds.length}</span>
+            <span>{room?.type === 'private' ? `Ocupantes: ${guestCount}` : `Camas: ${beds.length}`}</span>
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>

@@ -1098,6 +1098,54 @@ function RoomModal({
           </select>
         </label>
 
+        {draft.type === 'private' && (
+          <div style={{ marginTop: 12, padding: 12, background: 'var(--paper)', borderRadius: 8, border: '1px solid var(--line)' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: 13, color: 'var(--text)' }}>Configuración de Privada (Ocupantes)</h4>
+            <label style={{ marginBottom: 0 }}>
+              Capacidad máxima (Huéspedes)
+              <input
+                type="number"
+                min="1"
+                value={draft.maxGuests ?? 1}
+                onChange={(e) => {
+                  const maxGuests = Math.max(1, Number(e.target.value))
+                  onChange({ ...editor, draft: { ...draft, maxGuests } })
+                }}
+              />
+            </label>
+            
+            <div style={{ marginTop: 16 }}>
+              <span className="eyebrow" style={{ display: 'block', marginBottom: 8 }}>Precios por cantidad de huéspedes (BOB)</span>
+              {Array.from({ length: draft.maxGuests ?? 1 }).map((_, i) => {
+                const count = String(i + 1)
+                return (
+                  <div key={count} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <span style={{ minWidth: 100, fontSize: 13, color: 'var(--muted)' }}>{count} {i === 0 ? 'huésped' : 'huéspedes'}:</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder={String(draft.basePriceRoom || 0)}
+                      value={draft.priceByGuestCount?.[count] ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        const newPrices = { ...(draft.priceByGuestCount || {}) }
+                        if (val === '') {
+                          delete newPrices[count]
+                        } else {
+                          newPrices[count] = Number(val)
+                        }
+                        onChange({ ...editor, draft: { ...draft, priceByGuestCount: newPrices } })
+                      }}
+                      style={{ flex: 1, margin: 0 }}
+                    />
+                  </div>
+                )
+              })}
+              <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0 0' }}>Si dejas en blanco, se usará el precio base de {draft.basePriceRoom || 0} BOB.</p>
+            </div>
+          </div>
+        )}
+
         {!editor.id && (
           <div className="new-beds">
             <div className="bed-panel-header">

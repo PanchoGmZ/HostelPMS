@@ -7,6 +7,8 @@ export const roomSchema = z.object({
   basePriceRoom: z.number().min(0, 'El precio base no puede ser negativo'),
   status: z.enum(['active', 'inactive']),
   amenities: z.array(z.string()).optional(),
+  maxGuests: z.number().min(1).optional(),
+  priceByGuestCount: z.record(z.string(), z.number()).optional(),
 })
 
 export const bedSchema = z.object({

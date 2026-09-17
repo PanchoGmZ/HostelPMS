@@ -72,6 +72,8 @@ export function WalkInModal({
   const [nights, setNights] = useState(1)
   const [pricePerNight, setPricePerNight] = useState(0)
   const [deposit, setDeposit] = useState(0)
+  const [guestCount, setGuestCount] = useState<number>(1)
+  const [guestIds, setGuestIds] = useState<string[]>([])
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -110,22 +112,36 @@ export function WalkInModal({
   }, [stays, reservations, todayStr, checkOutDateStr])
 
   const selectedRoomObj = useMemo(() => rooms.find((r) => r.id === selectedRoomId) || room, [rooms, selectedRoomId, room])
+  const isPrivate = selectedRoomObj.type === 'private'
   
   const availableBeds = useMemo(() => {
     return selectedRoomObj.beds.filter((b) => b.status === 'active' && !occupiedBedIds.has(b.id))
   }, [selectedRoomObj, occupiedBedIds])
 
-  const effectiveBedId = selectedBedId || availableBeds[0]?.id || ''
+  const isRoomFullyAvailable = useMemo(() => {
+    const activeBeds = selectedRoomObj.beds.filter(b => b.status === 'active')
+    return activeBeds.every(b => !occupiedBedIds.has(b.id))
+  }, [selectedRoomObj, occupiedBedIds])
+
+  const effectiveBedIds = isPrivate
+    ? selectedRoomObj.beds.filter(b => b.status === 'active').map(b => b.id)
+    : [selectedBedId || availableBeds[0]?.id || '']
+
+  const effectiveBedId = effectiveBedIds[0] || ''
   const effectiveBedObj = availableBeds.find((b) => b.id === effectiveBedId)
   
-  const bedDisplayName = effectiveBedObj?.label || (effectiveBedId ? `Cama ${effectiveBedId.slice(-3)}` : 'Sin asignar')
+  const bedDisplayName = isPrivate 
+    ? `Habitación completa (${selectedRoomObj.name})`
+    : (effectiveBedObj?.label || (effectiveBedId ? `Cama ${effectiveBedId.slice(-3)}` : 'Sin asignar'))
 
   // Set default price when bed changes
   useEffect(() => {
-    if (effectiveBedObj) {
+    if (isPrivate) {
+      setPricePerNight(selectedRoomObj.priceByGuestCount?.[String(guestCount)] ?? selectedRoomObj.basePriceRoom ?? 0)
+    } else if (effectiveBedObj) {
       setPricePerNight(effectiveBedObj.basePriceBed ?? selectedRoomObj.basePriceRoom ?? 50)
     }
-  }, [effectiveBedObj, selectedRoomObj])
+  }, [effectiveBedObj, selectedRoomObj, isPrivate, guestCount])
 
   const totalEstimate = useMemo(() => {
     return Math.max(1, nights) * Math.max(0, pricePerNight)
@@ -161,9 +177,16 @@ export function WalkInModal({
       }
     }
 
-    if (!effectiveBedId) {
-      setFormError('No hay camas disponibles en la habitación seleccionada para estas fechas.')
-      return
+    if (isPrivate) {
+      if (!isRoomFullyAvailable) {
+        setFormError('La habitación seleccionada no está disponible completa para estas fechas.')
+        return
+      }
+    } else {
+      if (!effectiveBedId) {
+        setFormError('No hay camas disponibles en la habitación seleccionada para estas fechas.')
+        return
+      }
     }
 
     if (nights <= 0) {
@@ -205,21 +228,26 @@ export function WalkInModal({
         dates.push(d.toISOString().slice(0, 10))
       }
 
-      const pricePerNightMatrix = {
-        [effectiveBedId]: Object.fromEntries(dates.map((date) => [date, pricePerNight])),
-      }
+      const pricePerNightMatrix = Object.fromEntries(
+        effectiveBedIds.map((bId) => [
+          bId,
+          Object.fromEntries(dates.map((date) => [date, isPrivate ? (bId === effectiveBedIds[0] ? pricePerNight : 0) : pricePerNight])),
+        ])
+      )
 
       // 3. Create instant reservation (will fail if availability conflicts in backend)
       const resResult = await createReservation({
         establishmentId,
         guestId: finalGuestId,
         roomId: selectedRoomObj.id,
-        bedIds: [effectiveBedId],
-        saleMode: 'bed',
+        bedIds: effectiveBedIds,
+        saleMode: isPrivate ? 'full_room' : 'bed',
         checkIn: todayStr,
         checkOut: checkOutDateStr,
         pricePerNight: pricePerNightMatrix,
         channel: 'direct',
+        guestCount: isPrivate ? guestCount : undefined,
+        guestIds: isPrivate ? guestIds.filter(id => id.trim() !== '') : undefined,
       })
 
       if (!resResult?.reservationId) {
@@ -230,9 +258,9 @@ export function WalkInModal({
       await checkInGuest({
         establishmentId,
         reservationId: resResult.reservationId,
-        guestIds: [finalGuestId],
+        guestIds: isPrivate ? [finalGuestId, ...guestIds.filter(id => id.trim() !== '')] : [finalGuestId],
         roomId: selectedRoomObj.id,
-        bedIds: [effectiveBedId],
+        bedIds: effectiveBedIds,
         expectedCheckOutDate: checkOutDateStr,
         deposit,
         documentVerified: true,
@@ -450,6 +478,8 @@ export function WalkInModal({
               onChange={(e) => {
                 setSelectedRoomId(e.target.value)
                 setSelectedBedId('')
+                setGuestCount(1)
+                setGuestIds([])
               }}
               required
             >
@@ -460,22 +490,78 @@ export function WalkInModal({
               ))}
             </select>
           </div>
-          <div>
-            <label>Cama (Libre todo el rango)</label>
-            <select
-              value={effectiveBedId}
-              onChange={(e) => setSelectedBedId(e.target.value)}
-              required
-              disabled={availableBeds.length === 0}
-            >
-              {availableBeds.length === 0 && <option value="">Ninguna disponible</option>}
-              {availableBeds.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.label || `Cama ${b.id.slice(-3)}`}
-                </option>
+          {!isPrivate ? (
+            <div>
+              <label>Cama (Libre todo el rango)</label>
+              <select
+                value={effectiveBedId}
+                onChange={(e) => setSelectedBedId(e.target.value)}
+                required
+                disabled={availableBeds.length === 0}
+              >
+                {availableBeds.length === 0 && <option value="">Ninguna disponible</option>}
+                {availableBeds.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label || `Cama ${b.id.slice(-3)}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '8px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Ocupantes (Privada)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button type="button" className="secondary-button compact-button" onClick={() => setGuestCount((c) => Math.max(1, c - 1))} style={{ padding: '4px 8px' }}>-</button>
+                  <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{guestCount}</span>
+                  <button type="button" className="secondary-button compact-button" onClick={() => setGuestCount((c) => Math.min(selectedRoomObj.maxGuests || 99, c + 1))} style={{ padding: '4px 8px' }}>+</button>
+                </div>
+              </label>
+              
+              {guestIds.map((companionId, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <select
+                    value={companionId}
+                    onChange={(e) => {
+                      const newIds = [...guestIds]
+                      newIds[idx] = e.target.value
+                      setGuestIds(newIds)
+                    }}
+                    style={{ flex: 1, margin: 0, fontSize: 12, padding: '4px 8px' }}
+                  >
+                    <option value="">Acompañante...</option>
+                    {filteredGuests.map((g) => (
+                      <option key={g.id} value={g.id} disabled={g.id === selectedGuestId || guestIds.includes(g.id)}>
+                        {g.firstName} {g.lastName}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newIds = [...guestIds]
+                      newIds.splice(idx, 1)
+                      setGuestIds(newIds)
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: 4 }}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
               ))}
-            </select>
-          </div>
+              
+              {guestIds.length < guestCount - 1 && (
+                <button
+                  type="button"
+                  className="secondary-button compact-button"
+                  onClick={() => setGuestIds([...guestIds, ''])}
+                  style={{ alignSelf: 'flex-start', marginTop: 4 }}
+                >
+                  + Añadir acompañante
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Stay details */}

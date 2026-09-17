@@ -8,7 +8,9 @@ export const createReservationSchema = z.object({
   checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de entrada inválida'),
   checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha de salida inválida'),
   channel: z.string().min(1, 'Selecciona un canal de reserva'),
-  commissionPercent: z.number().min(0).max(100).optional(),
+  commissionPercent: z.union([z.number().min(0).max(100), z.literal('')]).optional(),
+  guestCount: z.number().min(1).optional(),
+  guestIds: z.array(z.string()).optional(),
 }).refine(
   (data) => {
     const inDate = new Date(`${data.checkIn}T00:00:00`)

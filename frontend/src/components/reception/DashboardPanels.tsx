@@ -53,22 +53,34 @@ export function ArrivalsPanel({ todayArrivals, guests, rooms, onCheckInReservati
         ) : (
           todayArrivals.map((res) => {
             const guestName = getGuestName(res.primaryGuestId, guests)
+            const roomObj = rooms.find((item) => item.id === res.roomId)
+            const isPrivate = roomObj?.type === 'private'
             const roomName = getRoomName(res.roomId, rooms)
             const bedName = res.bedIds && res.bedIds.length > 0 ? getBedName(res.roomId, res.bedIds[0], rooms) : null
-            const hasBed = !!bedName
+            const hasBed = !!bedName || isPrivate
             
             // Format time if checkInDate is available (we just fake a time based on the image or use default 15:00)
             const timeStr = "15:00" 
             
+            const locationText = isPrivate 
+              ? <>{roomName} completa</>
+              : hasBed 
+                ? <>{roomName} · {bedName}</>
+                : <span style={{color: 'var(--coral)'}}><AlertTriangle size={12} style={{display: 'inline', marginRight: '4px', verticalAlign: '-2px'}}/> Sin cama asignada</span>
+                
+            const capacityText = isPrivate
+              ? `(${res.guestCount || 1} huéspedes)`
+              : `(${res.bedIds?.length ?? 1} pers.)`
+
             return (
               <div key={res.id} className="panel-card">
                 <div className="card-left">
                   <span className="card-time">{timeStr}</span>
                   <div className="card-info">
-                    <h4 className="card-guest-name">{guestName}</h4>
+                    <h4 className="card-guest-name">{isPrivate ? `Titular: ${guestName}` : guestName}</h4>
                     <p className="card-location">
-                      {hasBed ? `${roomName} · ${bedName}` : <span style={{color: 'var(--coral)'}}><AlertTriangle size={12} style={{display: 'inline', marginRight: '4px', verticalAlign: '-2px'}}/> Sin cama asignada</span>}
-                      <span style={{color: 'var(--text-light)', marginLeft: '4px'}}>({res.bedIds?.length ?? 1} pers.)</span>
+                      {locationText}
+                      <span style={{color: 'var(--text-light)', marginLeft: '4px'}}>{capacityText}</span>
                     </p>
                   </div>
                 </div>
@@ -116,23 +128,29 @@ export function DeparturesPanel({ todayDepartures, guests, rooms, folios, onQuic
         ) : (
           todayDepartures.map((stay) => {
             const guestName = getGuestName(stay.guestIds?.[0], guests)
+            const roomObj = rooms.find((item) => item.id === stay.roomId)
+            const isPrivate = roomObj?.type === 'private'
             const roomName = getRoomName(stay.roomId, rooms)
             const bedName = stay.bedIds && stay.bedIds.length > 0 ? getBedName(stay.roomId, stay.bedIds[0], rooms) : ''
             const folio = folios.find((f) => f.stayId === stay.id)
             const balance = folio?.balance ?? 0
             const hasDebt = balance > 0
             
+            const locationText = isPrivate 
+              ? `${roomName} completa (${stay.guestCount || 1} huéspedes)`
+              : `${roomName} · ${bedName}`
+
             return (
               <div key={stay.id} className="panel-card">
                 <div className="card-left">
                   <div className="card-info" style={{ marginLeft: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <h4 className="card-guest-name">{guestName}</h4>
+                      <h4 className="card-guest-name">{isPrivate ? `Titular: ${guestName}` : guestName}</h4>
                       <span className={`status-badge ${hasDebt ? 'debt' : 'available'}`}>
                         {hasDebt ? `Debe ${balance.toFixed(2)} BOB` : `Al día (${balance.toFixed(2)} BOB)`}
                       </span>
                     </div>
-                    <p className="card-location">{roomName} · {bedName} · Límite 11:00 AM</p>
+                    <p className="card-location">{locationText} · Límite 11:00 AM</p>
                   </div>
                 </div>
                 <div className="card-right">

@@ -1,5 +1,16 @@
 # Changelog — Pata y Perro PMS
 
+## v1.6
+Fecha: 2026-09-17
+
+- Implementada lógica de venta completa para habitaciones privadas (`full_room`).
+- La configuración de habitaciones privadas incluye cantidad máxima de huéspedes y tarifa según cantidad de ocupantes.
+- En una reserva de habitación privada, todas las camas se bloquean automáticamente.
+- UI rediseñada en Walk-in y Reservas para habitaciones privadas, pidiendo cantidad de ocupantes y acompañantes de forma nativa.
+- Dashboard Operativo consolidado para las llegadas y salidas de habitaciones privadas.
+- Persistencia estricta del histórico de `guestCount` e IDs en los modelos Reservation y Stay.
+- Cálculos y validaciones de comisiones transferidos y blindados al backend.
+
 ## v1.0
 Fecha: 2026-09-17
 

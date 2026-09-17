@@ -17,6 +17,9 @@ export interface CreateReservationPayload {
   checkOutDate?: string;
   pricePerNight: Record<string, Record<string, number>>;
   channel?: string;
+  commissionPercent?: number;
+  guestCount?: number;
+  guestIds?: string[];
 }
 
 export interface CreateReservationResult {
@@ -56,6 +59,9 @@ export async function createReservationService(
     bedIds,
     pricePerNight,
     channel = 'direct',
+    commissionPercent,
+    guestCount,
+    guestIds,
   } = payload;
   const requestedCheckIn = payload.checkIn ?? payload.checkInDate;
   const requestedCheckOut = payload.checkOut ?? payload.checkOutDate;
@@ -85,9 +91,8 @@ export async function createReservationService(
     throw new ReservationError('No pertenecés al staff de este establecimiento.', 403);
   }
 
-  // --- Validar precios por cama y calcular el total server-side ---
+  // --- Pre-validate dates from pricePerNight structure ---
   const perBedDates: { [bedId: string]: string[] } = {};
-  let totalAmount = 0;
 
   for (const bedId of bedIds) {
     const bedPrices = pricePerNight[bedId];
@@ -99,11 +104,6 @@ export async function createReservationService(
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
         throw new ReservationError(`Fecha inválida para la cama ${bedId}: ${d}.`);
       }
-      const price = bedPrices[d];
-      if (typeof price !== 'number' || !Number.isFinite(price) || price < 0) {
-        throw new ReservationError(`Precio inválido para la cama ${bedId} en la fecha ${d}.`);
-      }
-      totalAmount += price;
     }
     perBedDates[bedId] = dates;
   }
@@ -168,6 +168,9 @@ export async function createReservationService(
     lineRefByBed[bedId] = reservationRef.collection('lines').doc();
   }
 
+  let finalTotalAmount = 0;
+  const finalPricePerNight: Record<string, Record<string, number>> = {};
+
   try {
     await db.runTransaction(async (transaction) => {
       // 0. Validar la pertenencia y el estado de la habitación y sus camas.
@@ -177,6 +180,7 @@ export async function createReservationService(
       const roomSnap = await transaction.get(roomRef);
       if (!roomSnap.exists)
         throw new Error('La habitación no existe en este establecimiento.');
+      const room = roomSnap.data() || {};
       const bedRefs = bedIds.map((bedId) => roomRef.collection('beds').doc(bedId));
       const bedSnaps = await Promise.all(bedRefs.map((ref) => transaction.get(ref)));
       const allBedsSnap = await transaction.get(roomRef.collection('beds'));
@@ -211,6 +215,45 @@ export async function createReservationService(
           'full_room debe incluir exactamente todas las camas activas de la habitación.'
         );
       }
+      
+      // Calculate server-side pricing
+      let commissionRate = 0;
+      let finalCommissionPercent = 0;
+      if (channel === 'booking' || channel === 'airbnb') {
+        const cp = typeof commissionPercent === 'number' ? commissionPercent : 0;
+        if (cp >= 0 && cp <= 100) {
+          commissionRate = cp / 100;
+          finalCommissionPercent = cp;
+        }
+      }
+
+      for (const bedId of bedIds) {
+        finalPricePerNight[bedId] = {};
+        const bedSnap = bedSnaps.find(snap => snap.id === bedId);
+        const bed = bedSnap?.data() || {};
+        const dates = perBedDates[bedId];
+        
+        let basePrice = 0;
+        if (saleMode === 'full_room' && room.type === 'private') {
+          // For private rooms, we assign the full price to the first bed
+          if (bedId === bedIds[0]) {
+            const countStr = String(guestCount || 1);
+            basePrice = room.priceByGuestCount?.[countStr] ?? room.basePriceRoom ?? 0;
+          } else {
+            basePrice = 0; // Other beds in private room are blocked but cost 0
+          }
+        } else {
+          basePrice = bed.basePriceBed ?? room.basePriceRoom ?? 0;
+        }
+
+        const nightlyPrice = basePrice * (1 + commissionRate);
+
+        for (const d of dates) {
+          finalPricePerNight[bedId][d] = nightlyPrice;
+          finalTotalAmount += nightlyPrice;
+        }
+      }
+
       const currency = estSnap.data()?.currency || 'BOB';
 
       // 1. Determinar buckets de availability a leer (bedId + yearMonth)
@@ -284,7 +327,7 @@ export async function createReservationService(
           dateFrom: Timestamp.fromDate(new Date(`${bedDates[0]}T00:00:00.000-04:00`)),
           dateTo: Timestamp.fromDate(new Date(`${bedDates[bedDates.length - 1]}T00:00:00.000-04:00`)),
           guestId: guestId || null,
-          pricePerNight: bedPrices, // snapshot histórico
+          pricePerNight: finalPricePerNight[bedId], // snapshot histórico server-side
           status: 'active',
           createdAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
@@ -296,20 +339,22 @@ export async function createReservationService(
         channel,
         status: 'confirmed',
         primaryGuestId: guestId || null,
-        guestIds: guestId ? [guestId] : [],
+        guestIds: guestIds && guestIds.length > 0 ? guestIds : (guestId ? [guestId] : []),
         roomId,
         bedIds,
         checkInDate,
         checkOutDate,
-        totalAmount,
+        totalAmount: finalTotalAmount,
         currency,
+        ...(commissionPercent !== undefined ? { commissionPercent: finalCommissionPercent } : {}),
+        ...(guestCount !== undefined ? { guestCount } : {}),
         createdBy: callerUid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
 
-    return { success: true as const, reservationId: reservationRef.id, totalAmount };
+    return { success: true as const, reservationId: reservationRef.id, totalAmount: finalTotalAmount };
   } catch (error: any) {
     // Detectar errores de disponibilidad para mapearlos a 409
     if (error.message && error.message.includes('ya está ocupada')) {

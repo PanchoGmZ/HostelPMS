@@ -67,11 +67,13 @@ export async function checkInGuestService(
 
       transaction.set(stayRef, {
         reservationId: reservationId,
+        primaryGuestId: reservation.primaryGuestId || null,
         guestIds: guestIds && guestIds.length > 0 ? guestIds : [reservation.primaryGuestId].filter(Boolean),
         roomId: reservation.roomId,
         bedIds: reservation.bedIds,
         checkInDate: reservation.checkInDate,
         expectedCheckOutDate: reservation.checkOutDate,
+        guestCount: reservation.guestCount || undefined,
         actualCheckOutDate: null,
         status: 'active',
         deposit: deposit || 0,

@@ -87,4 +87,4 @@ export async function setBedStatus(establishmentId: string, roomId: string, bed:
   await updateDoc(doc(db, bedsPath(establishmentId, roomId), bed.id), { status, outOfServiceReason: reason, updatedAt: serverTimestamp() })
 }
 
-export type RoomForm = { name: string; floor: string; type: RoomType; basePriceRoom: number; status: ResourceStatus; amenities: string[] }
+export type RoomForm = { name: string; floor: string; type: RoomType; basePriceRoom: number; status: ResourceStatus; amenities: string[]; maxGuests?: number; priceByGuestCount?: Record<string, number> }

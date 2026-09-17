@@ -24,6 +24,8 @@ export interface Room {
   status: ResourceStatus
   amenities: string[]
   beds: Bed[]
+  maxGuests?: number
+  priceByGuestCount?: Record<string, number>
   maintenanceCount?: number
   maintenanceBlocked?: boolean
   cleaningCount?: number

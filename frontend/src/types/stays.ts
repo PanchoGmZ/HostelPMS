@@ -11,6 +11,7 @@ export interface StayMovement {
 export interface Stay {
   id: string
   reservationId: string | null
+  primaryGuestId?: string | null
   guestIds: string[]
   roomId: string
   bedIds: string[]
@@ -18,6 +19,7 @@ export interface Stay {
   expectedCheckOutDate: { seconds: number }
   actualCheckOutDate?: { seconds: number } | null
   status: StayStatus
+  guestCount?: number
   deposit: number
   documentVerified: boolean
   createdBy: string
