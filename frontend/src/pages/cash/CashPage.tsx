@@ -213,47 +213,49 @@ export function CashPage() {
               No hay movimientos registrados en este turno aún. Los pagos registrados en folios figurarán aquí.
             </div>
           ) : (
-            <div style={{ maxHeight: '250px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '6px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                <thead style={{ background: '#f0f4f2', borderBottom: '1px solid var(--line)' }}>
-                  <tr>
-                    <th style={{ padding: '8px 12px' }}>Tipo</th>
-                    <th style={{ padding: '8px 12px' }}>Descripción</th>
-                    <th style={{ padding: '8px 12px' }}>Método</th>
-                    <th style={{ padding: '8px 12px' }}>Hora</th>
-                    <th style={{ padding: '8px 12px', textAlign: 'right' }}>Monto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeShift.movements.map((m) => {
-                    const isOut = m.type === 'out'
-                    return (
-                      <tr key={m.id} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                        <td style={{ padding: '8px 12px' }}>
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              background: isOut ? '#fde8e4' : '#dcece3',
-                              color: isOut ? '#b9381e' : '#1b5e30',
-                            }}
-                          >
-                            {isOut ? 'Egreso' : m.type === 'pago_folio' ? 'Pago Folio' : 'Ingreso'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '8px 12px' }}>{m.description ?? 'Movimiento de caja'}</td>
-                        <td style={{ padding: '8px 12px', textTransform: 'capitalize' }}>{m.method ?? 'Efectivo'}</td>
-                        <td style={{ padding: '8px 12px', color: 'var(--muted)' }}>{formatDateTime(m.createdAt)}</td>
-                        <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, color: isOut ? '#b9381e' : '#1b5e30' }}>
-                          {isOut ? '-' : '+'}{m.amount} BOB
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+            <div className="movement-list" style={{ maxHeight: '350px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {activeShift.movements.map((m) => {
+                const isOut = m.type === 'out'
+                return (
+                  <article key={m.id} className="movement-row" style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto',
+                    gap: '12px',
+                    alignItems: 'center',
+                    padding: '12px',
+                    background: 'var(--white)',
+                    border: '1px solid var(--line)',
+                    borderRadius: '7px'
+                  }}>
+                    <div>
+                      <span
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: isOut ? '#fde8e4' : '#dcece3',
+                          color: isOut ? '#b9381e' : '#1b5e30',
+                          display: 'inline-block'
+                        }}
+                      >
+                        {isOut ? 'Egreso' : m.type === 'pago_folio' ? 'Pago Folio' : 'Ingreso'}
+                      </span>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: '13px', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                        {m.description ?? 'Movimiento de caja'}
+                      </strong>
+                      <small style={{ color: 'var(--muted)', display: 'block' }}>
+                        <span style={{ textTransform: 'capitalize' }}>{m.method ?? 'Efectivo'}</span> • {formatDateTime(m.createdAt)}
+                      </small>
+                    </div>
+                    <div style={{ textAlign: 'right', fontWeight: 700, fontSize: '15px', color: isOut ? '#b9381e' : '#1b5e30' }}>
+                      {isOut ? '-' : '+'}{m.amount} <small style={{ fontSize: '11px', fontWeight: 500 }}>BOB</small>
+                    </div>
+                  </article>
+                )
+              })}
             </div>
           )}
         </section>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, CircleAlert } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, CircleAlert, Menu, X } from 'lucide-react'
 import { useAuth } from '../../context/useAuth'
 import { getDocumentById } from '../../services/firebase/firestoreService'
 import { listRooms } from '../../services/rooms/roomsService'
@@ -85,6 +85,7 @@ export function ReceptionPage() {
   const [checkoutData, setCheckoutData] = useState<{ stay: Stay; guest?: Guest; folio?: Folio } | null>(null)
   const [searchModalOpen, setSearchModalOpen] = useState(false)
   const [interceptorOpen, setInterceptorOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
 
   // Load all operational data in parallel
   const loadData = useCallback(async (isSilent = false) => {
@@ -304,6 +305,17 @@ export function ReceptionPage() {
         maintenanceActive={activeIncidents.length}
       />
 
+      <div className="mobile-sidebar-toggle-container">
+        <button 
+          className="mobile-sidebar-toggle-btn secondary-button" 
+          onClick={() => setMobileSidebarOpen(true)}
+          type="button"
+        >
+          <Menu size={16} />
+          <span>Ver Llegadas y Salidas ({todayArrivals.length + todayDepartures.length})</span>
+        </button>
+      </div>
+
       <div className="reception-dashboard-layout">
         <div className="dashboard-main-column">
           {loading ? (
@@ -337,33 +349,47 @@ export function ReceptionPage() {
           />
         </div>
 
-        <div className="dashboard-side-column">
-          <ArrivalsPanel
-            todayArrivals={todayArrivals}
-            guests={guests}
-            rooms={rooms}
-            onCheckInReservation={(res) => {
-              const resRoom = rooms.find((r) => r.id === res.roomId)
-              const resBed = resRoom?.beds.find((b) => res.bedIds?.includes(b.id))
-              if (resRoom && resBed) {
-                setWalkInBed({ bed: resBed, room: resRoom })
-              } else {
-                setReservationModalData({})
-              }
-            }}
-          />
-          <DeparturesPanel
-            todayDepartures={todayDepartures}
-            guests={guests}
-            rooms={rooms}
-            folios={folios}
-            onQuickCheckout={(stay) => {
-              const g = guests.find((item) => stay.guestIds?.includes(item.id))
-              const f = folios.find((item) => item.stayId === stay.id)
-              setCheckoutData({ stay, guest: g, folio: f })
-            }}
-          />
+        <div className={`dashboard-side-column ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
+          <div className="mobile-sidebar-header">
+            <h3>Gestión del Día</h3>
+            <button className="mobile-sidebar-close" onClick={() => setMobileSidebarOpen(false)} type="button">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="dashboard-side-column-content">
+            <ArrivalsPanel
+              todayArrivals={todayArrivals}
+              guests={guests}
+              rooms={rooms}
+              onCheckInReservation={(res) => {
+                const resRoom = rooms.find((r) => r.id === res.roomId)
+                const resBed = resRoom?.beds.find((b) => res.bedIds?.includes(b.id))
+                if (resRoom && resBed) {
+                  setMobileSidebarOpen(false)
+                  setWalkInBed({ bed: resBed, room: resRoom })
+                } else {
+                  setMobileSidebarOpen(false)
+                  setReservationModalData({})
+                }
+              }}
+            />
+            <DeparturesPanel
+              todayDepartures={todayDepartures}
+              guests={guests}
+              rooms={rooms}
+              folios={folios}
+              onQuickCheckout={(stay) => {
+                const g = guests.find((item) => stay.guestIds?.includes(item.id))
+                const f = folios.find((item) => item.stayId === stay.id)
+                setMobileSidebarOpen(false)
+                setCheckoutData({ stay, guest: g, folio: f })
+              }}
+            />
+          </div>
         </div>
+        {mobileSidebarOpen && (
+          <div className="mobile-sidebar-backdrop" onClick={() => setMobileSidebarOpen(false)} />
+        )}
       </div>
 
       {/* 1. Guest Stay Drawer (Cama Ocupada) */}

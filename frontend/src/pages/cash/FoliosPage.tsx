@@ -58,6 +58,7 @@ export function FoliosPage() {
   // Modals
   const [selectedFolio, setSelectedFolio] = useState<Folio | null>(null)
   const [folioForPayment, setFolioForPayment] = useState<Folio | null>(null)
+  const [showActionSelector, setShowActionSelector] = useState(false)
 
   const load = useCallback(async () => {
     if (!establishmentId) return
@@ -154,7 +155,7 @@ export function FoliosPage() {
           <h1 className="folios-title">Folios de Estadía</h1>
           <p className="folios-subtitle">Consulta el saldo de cada estadía: Cargos + Consumos - Pagos = Saldo Final. Los consumos se registran desde POS Consumos.</p>
         </div>
-        <button className="btn-orange" onClick={() => alert("Funcionalidad en desarrollo")}>
+        <button className="btn-orange" onClick={() => setShowActionSelector(true)}>
           <Plus size={16} />
           Nuevo Movimiento
         </button>
@@ -385,6 +386,66 @@ export function FoliosPage() {
           }}
           onError={(msg) => setError(msg)}
         />
+      )}
+      {/* Modal Selector de Acciones */}
+      {showActionSelector && (
+        <div className="modal-backdrop">
+          <div className="modal-form" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <div>
+                <span className="kicker">Movimientos financieros</span>
+                <h2>Nuevo movimiento</h2>
+              </div>
+              <button type="button" onClick={() => setShowActionSelector(false)}>
+                <X size={19} />
+              </button>
+            </div>
+            
+            <p style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '16px' }}>
+              Selecciona qué tipo de movimiento deseas registrar.
+            </p>
+            
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ justifyContent: 'flex-start', padding: '12px', height: 'auto', textAlign: 'left', border: '1px solid #d1d5db' }}
+                onClick={() => {
+                  setShowActionSelector(false)
+                  // Find first folio with debt if any, else just first folio
+                  const firstDebtFolio = folios.find(f => (f.balance ?? 0) < 0) || folios[0]
+                  if (firstDebtFolio) {
+                    setFolioForPayment(firstDebtFolio)
+                  } else {
+                    alert("No hay folios disponibles para procesar pagos.")
+                  }
+                }}
+              >
+                <DollarSign size={18} style={{ color: '#059669', marginRight: '8px' }} />
+                <div>
+                  <strong style={{ display: 'block', color: 'var(--ink)' }}>Registrar Pago a Folio</strong>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Registra un cobro a un folio específico</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="btn-outline"
+                style={{ justifyContent: 'flex-start', padding: '12px', height: 'auto', textAlign: 'left', border: '1px solid #d1d5db' }}
+                onClick={() => {
+                  setShowActionSelector(false)
+                  alert("Para registrar un reembolso, abre el 'Detalle' del folio correspondiente y selecciona la acción sobre el pago original.")
+                }}
+              >
+                <Receipt size={18} style={{ color: '#d97706', marginRight: '8px' }} />
+                <div>
+                  <strong style={{ display: 'block', color: 'var(--ink)' }}>Registrar Reembolso</strong>
+                  <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Devoluciones por pagos previos</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

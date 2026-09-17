@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../../context/useAuth'
 import { loadReports, generateDailySummaryOnDemand } from '../../services/reports/reportsService'
 import type { DailySummary, ReportMetrics } from '../../types/reports'
+import jsPDF from 'jspdf'
 
 const PERIOD_OPTIONS = [
   { label: 'Últimos 7 días', value: 7 },
@@ -54,6 +55,81 @@ export function ReportsPage() {
     return () => window.clearTimeout(timer)
   }, [load])
 
+  const exportPDF = useCallback(() => {
+    const doc = new jsPDF()
+    
+    // Config
+    const margin = 14
+    let y = 20
+
+    // Header
+    doc.setFontSize(22)
+    doc.setTextColor(27, 94, 48) // Teal-like color
+    doc.text('Pata y Perro PMS', margin, y)
+    y += 10
+    
+    doc.setFontSize(14)
+    doc.setTextColor(31, 41, 55) // Dark Gray
+    doc.text(`Reporte Operativo - Últimos ${period} días`, margin, y)
+    y += 15
+
+    // KPIs
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Resumen General', margin, y)
+    doc.setFont('helvetica', 'normal')
+    y += 8
+
+    const r = metrics?.reservations === -1 ? '—' : (metrics?.reservations ?? 0)
+    const active = metrics?.activeStays === -1 ? '—' : (metrics?.activeStays ?? 0)
+    const rev = metrics?.revenue === -1 ? '—' : `${metrics?.revenue?.toFixed(0) ?? 0} BOB`
+    const occ = metrics?.occupancy === -1 ? '—' : `${metrics?.occupancy ?? 0}%`
+
+    doc.text(`Total Reservas: ${r}`, margin, y); y += 6;
+    doc.text(`Estadías Activas: ${active}`, margin, y); y += 6;
+    doc.text(`Ingresos Totales: ${rev}`, margin, y); y += 6;
+    doc.text(`Ocupación Promedio (último día): ${occ}`, margin, y); y += 12;
+
+    // Daily Summaries
+    doc.setFont('helvetica', 'bold')
+    doc.text('Histórico Diario', margin, y)
+    doc.setFont('helvetica', 'normal')
+    y += 8
+
+    // Simple Table Header
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Fecha', margin, y)
+    doc.text('In', margin + 40, y)
+    doc.text('Out', margin + 60, y)
+    doc.text('Ocupación', margin + 80, y)
+    doc.text('Ingresos', margin + 120, y)
+    doc.setFont('helvetica', 'normal')
+    y += 6
+
+    // Table Body
+    summaries.slice(0, 30).forEach(summary => { // limit just in case
+      if (y > 270) {
+        doc.addPage()
+        y = 20
+      }
+      doc.text(summary.id, margin, y)
+      doc.text(`${summary.checkIns ?? 0}`, margin + 40, y)
+      doc.text(`${summary.checkOuts ?? 0}`, margin + 60, y)
+      doc.text(`${summary.occupancy ?? 0}%`, margin + 80, y)
+      doc.text(`${(summary.revenue ?? 0).toFixed(0)} BOB`, margin + 120, y)
+      y += 6
+    })
+
+    // Footer
+    const today = new Date().toLocaleString('es-BO')
+    doc.setFontSize(9)
+    doc.setTextColor(156, 163, 175)
+    doc.text(`Generado el ${today}`, margin, 285)
+
+    doc.save(`Reporte_PataYPerro_${period}dias.pdf`)
+  }, [metrics, summaries, period])
+
   if (!establishmentId) {
     return (
       <div className="empty-state">
@@ -72,7 +148,15 @@ export function ReportsPage() {
           <h1>Reportes del Hostel</h1>
           <p>Indicadores calculados a partir de los datos registrados en Firestore.</p>
         </div>
-        <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        <div className="header-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="secondary-button compact-button"
+            onClick={exportPDF}
+            style={{ borderColor: 'var(--teal)', color: 'var(--teal)' }}
+          >
+            Exportar PDF
+          </button>
           {isAdmin && (
             <button
               type="button"

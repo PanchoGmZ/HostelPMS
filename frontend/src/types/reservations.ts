@@ -42,6 +42,7 @@ export interface CreateReservationPayload {
   checkOut: string
   pricePerNight: Record<string, Record<string, number>>
   channel: string
+  commissionPercent?: number
 }
 
 export interface CancelReservationPayload {

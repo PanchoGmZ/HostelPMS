@@ -786,6 +786,7 @@ function ReservationModal({
   const [checkOut, setCheckOut] = useState(tomorrowStr)
   const [beds, setBeds] = useState<string[]>([])
   const [channel, setChannel] = useState('reception')
+  const [commissionPercent, setCommissionPercent] = useState<number | ''>('')
 
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -876,6 +877,7 @@ function ReservationModal({
       checkIn,
       checkOut,
       channel,
+      commissionPercent: commissionPercent === '' ? undefined : commissionPercent,
     })
 
     if (!validation.success) {
@@ -893,14 +895,18 @@ function ReservationModal({
       dates.push(date.toISOString().slice(0, 10))
     }
 
+    const commRate = (channel === 'booking' || channel === 'airbnb') && commissionPercent !== '' 
+      ? Number(commissionPercent) / 100 
+      : 0
+
     const pricePerNight = Object.fromEntries(
       beds.map((bedId) => [
         bedId,
         Object.fromEntries(
-          dates.map((date) => [
-            date,
-            room.beds.find((b) => b.id === bedId)?.basePriceBed ?? room.basePriceRoom,
-          ])
+          dates.map((date) => {
+            const basePrice = room.beds.find((b) => b.id === bedId)?.basePriceBed ?? room.basePriceRoom ?? 0
+            return [date, basePrice * (1 + commRate)]
+          })
         ),
       ])
     )
@@ -917,6 +923,7 @@ function ReservationModal({
         checkOut,
         pricePerNight,
         channel,
+        ...(commissionPercent !== '' ? { commissionPercent } : {}),
       })
       onSaved()
     } catch {
@@ -1053,13 +1060,35 @@ function ReservationModal({
         {/* Canal */}
         <label>
           Canal de reserva
-          <select value={channel} onChange={(event) => setChannel(event.target.value)}>
-            <option value="reception">Recepción (Directo)</option>
-            <option value="direct">Sitio Web / Directo</option>
+          <select value={channel} onChange={(event) => {
+            setChannel(event.target.value)
+            if (event.target.value !== 'booking' && event.target.value !== 'airbnb') {
+              setCommissionPercent('')
+            }
+          }}>
+            <option value="reception">Recepción</option>
             <option value="whatsapp">WhatsApp</option>
-            <option value="ota">OTA / Agencia Externa</option>
+            <option value="booking">Booking</option>
+            <option value="airbnb">Airbnb</option>
+            <option value="direct">Directo</option>
           </select>
         </label>
+
+        {(channel === 'booking' || channel === 'airbnb') && (
+          <label>
+            Comisión de la plataforma (%)
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              value={commissionPercent}
+              onChange={(e) => setCommissionPercent(e.target.value === '' ? '' : Number(e.target.value))}
+              placeholder="Ej. 15"
+              required
+            />
+          </label>
+        )}
 
         {/* Selección de Camas */}
         <div className="bed-choice" style={{ display: 'grid', gap: '8px' }}>
@@ -1124,13 +1153,32 @@ function ReservationModal({
             <span>Noches: {nights}</span>
             <span>Camas: {beds.length}</span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginTop: '4px' }}>
-            <strong>Precio total estimado:</strong>
-            <strong style={{ color: 'var(--teal)' }}>{estimatedTotal} BOB</strong>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+            <span style={{ color: 'var(--muted)' }}>Precio base hospedaje:</span>
+            <span>{estimatedTotal} BOB</span>
           </div>
-          <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Info size={11} />
-            El backend server-side es la autoridad final para validar precios y disponibilidad.
+          
+          {(channel === 'booking' || channel === 'airbnb') && commissionPercent !== '' && (
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ color: 'var(--muted)' }}>Markup {channel === 'booking' ? 'Booking' : 'Airbnb'} ({commissionPercent}%):</span>
+              <span style={{ color: '#d97706' }}>
+                {(estimatedTotal * (Number(commissionPercent) / 100)).toFixed(1)} BOB
+              </span>
+            </div>
+          )}
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #cce3d8' }}>
+            <strong>Precio total estimado:</strong>
+            <strong style={{ color: 'var(--teal)' }}>
+              {((channel === 'booking' || channel === 'airbnb') && commissionPercent !== '' 
+                ? estimatedTotal * (1 + Number(commissionPercent) / 100) 
+                : estimatedTotal).toFixed(1)} BOB
+            </strong>
+          </div>
+          <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px', display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
+            <Info size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <span>Este es el monto final de la reserva que incluye el cargo de la plataforma. La tarifa por noche se ajustará automáticamente al guardar.</span>
           </div>
         </div>
 

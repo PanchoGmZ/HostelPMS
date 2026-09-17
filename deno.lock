@@ -13,6 +13,7 @@
       "dependencies": [
         "npm:@netlify/functions@6",
         "npm:@types/node@^22.20.2",
+        "npm:date-fns@^4.4.0",
         "npm:firebase-admin@^14.4.0",
         "npm:typescript@^7.0.2"
       ]

@@ -80,3 +80,18 @@
 .alert-item.maintenance {
   color: var(--danger);
 }
+
+@media (max-width: 768px) {
+  .summary-cards-container {
+    display: flex;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 8px;
+    gap: 12px;
+  }
+  .summary-card {
+    min-width: 220px;
+    scroll-snap-align: start;
+    flex: 0 0 auto;
+  }
+}

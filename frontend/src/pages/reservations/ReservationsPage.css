@@ -494,3 +494,34 @@
   font-size: 12px;
 }
 
+@media (max-width: 768px) {
+  .guest-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .toolbar-search {
+    width: 100%;
+  }
+  .reservations-layout {
+    gap: 16px;
+  }
+  .res-card-top {
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .res-card-dates span {
+    font-size: 13px;
+  }
+  .res-card-guest {
+    font-size: 15px;
+  }
+  .res-card-bottom {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .res-card-bottom .res-amount {
+    text-align: right;
+  }
+}

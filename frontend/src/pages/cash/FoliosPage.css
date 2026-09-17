@@ -388,3 +388,51 @@
   align-items: center;
   gap: 6px;
 }
+
+@media (max-width: 768px) {
+  .folios-page-container {
+    padding: 16px;
+  }
+  .folios-header {
+    flex-direction: column;
+    gap: 16px;
+  }
+  .folios-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+  .folios-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .folios-filter {
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+    padding-top: 8px;
+  }
+  .folio-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .folio-icon-wrapper {
+    display: none;
+  }
+  .folio-stats {
+    flex-direction: column;
+    gap: 12px;
+    background: #f9fafb;
+    padding: 12px;
+    border-radius: 8px;
+  }
+  .folio-stat-col {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .folio-actions {
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+}

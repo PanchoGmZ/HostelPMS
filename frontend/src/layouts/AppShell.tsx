@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 import { BedDouble, Building2, CalendarDays, ConciergeBell, CreditCard, Globe2, Menu, Package, Settings2, ShoppingCart, Users, WalletCards, Wrench, X } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../context/useAuth'
@@ -42,6 +42,17 @@ export function AppShell({ children }: { children: ReactNode }) {
   const email = session?.user.email ?? 'Equipo de recepción'
   const role = session?.establishmentId ? session.roles[session.establishmentId] : null
 
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isMenuOpen])
+
   return (
     <div className="app-shell">
       <aside className={`sidebar ${isMenuOpen ? 'sidebar-open' : ''}`} style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px 16px' }}>
@@ -60,11 +71,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="nav-list" aria-label="Navegación principal" style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '12px', paddingRight: '4px' }}>
           {navGroups.map((group) => (
             <div key={group.title} className="nav-group">
-              <h4 style={{ 
-                fontSize: '10px', 
-                textTransform: 'uppercase', 
-                letterSpacing: '0.04em', 
-                color: 'var(--text-light)', 
+              <h4 style={{
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.04em',
+                color: 'var(--text-light)',
                 margin: '0 0 4px 8px',
                 fontWeight: 600
               }}>
@@ -92,14 +103,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
       {isMenuOpen && <button className="sidebar-backdrop" aria-label="Cerrar menú" type="button" onClick={() => setIsMenuOpen(false)} />}
       <main className="main-content">
-        <div className="topbar" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '10px 32px', background: 'var(--surface)', borderBottom: '1px solid var(--line-light)', position: 'sticky', top: 0, zIndex: 10, minHeight: '52px' }}>
-          <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <button className="menu-button" type="button" aria-label="Abrir menú" onClick={() => setIsMenuOpen(true)} style={{ display: 'none', background: 'none', border: 'none', cursor: 'pointer' }}>
-              {isMenuOpen ? <X size={24} color="var(--ink)" /> : <Menu size={24} color="var(--ink)" />}
-            </button>
+        <div className="topbar">
+          <button className="menu-button" type="button" aria-label="Abrir menú" onClick={() => setIsMenuOpen(true)}>
+            {isMenuOpen ? <X size={24} color="var(--ink)" /> : <Menu size={24} color="var(--ink)" />}
+          </button>
+          <div className="topbar-actions">
           </div>
         </div>
-        <div className="app-content-wrapper" style={{ padding: '32px', maxWidth: '1280px', margin: '0 auto' }}>
+        <div className="app-content-wrapper">
           {children}
         </div>
       </main>
