@@ -32,6 +32,11 @@ export interface Reservation {
   lines?: ReservationLine[]
   commissionPercent?: number
   guestCount?: number
+  // v1.7: pricing mode + tarifa especial
+  pricingMode?: 'standard' | 'manual'
+  manualPricePerNight?: number | null
+  specialRateReason?: string | null
+  saleMode?: 'bed' | 'full_room'
 }
 
 export interface CreateReservationPayload {
@@ -47,10 +52,28 @@ export interface CreateReservationPayload {
   commissionPercent?: number
   guestCount?: number
   guestIds?: string[]
+  // v1.7
+  pricingMode?: 'standard' | 'manual'
+  manualPricePerNight?: number
+  specialRateReason?: string
 }
 
 export interface CancelReservationPayload {
   establishmentId: string
   reservationId: string
   reason?: string
+}
+
+// v1.7
+export interface ModifyReservationPayload {
+  establishmentId: string
+  reservationId: string
+  primaryGuestId?: string
+  guestIds?: string[]
+  channel?: string
+  commissionPercent?: number
+  guestCount?: number
+  pricingMode?: 'standard' | 'manual'
+  manualPricePerNight?: number
+  specialRateReason?: string
 }

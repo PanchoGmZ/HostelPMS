@@ -1,7 +1,12 @@
 import { collection, getDocs, orderBy, query } from 'firebase/firestore'
 import { db } from '../firebase/config'
 import { apiPost } from '../api/apiClient'
-import type { CancelReservationPayload, CreateReservationPayload, Reservation } from '../../types/reservations'
+import type {
+  CancelReservationPayload,
+  CreateReservationPayload,
+  ModifyReservationPayload,
+  Reservation,
+} from '../../types/reservations'
 
 const path = (id: string) => `establishments/${id}/reservations`
 
@@ -24,3 +29,10 @@ export async function cancelReservation(data: CancelReservationPayload) {
   )
 }
 
+// v1.7
+export async function modifyReservation(data: ModifyReservationPayload) {
+  return await apiPost<{ success: boolean; message?: string; newTotalAmount?: number }>(
+    '/api/modifyReservation',
+    data
+  )
+}

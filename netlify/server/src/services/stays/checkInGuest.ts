@@ -73,7 +73,8 @@ export async function checkInGuestService(
         bedIds: reservation.bedIds,
         checkInDate: reservation.checkInDate,
         expectedCheckOutDate: reservation.checkOutDate,
-        guestCount: reservation.guestCount || undefined,
+        // v1.7: guestCount siempre como número — nunca undefined en Firestore
+        guestCount: typeof reservation.guestCount === 'number' ? reservation.guestCount : 1,
         actualCheckOutDate: null,
         status: 'active',
         deposit: deposit || 0,

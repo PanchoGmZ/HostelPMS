@@ -21,6 +21,7 @@ import { useAuth } from '../../context/useAuth'
 import { listRooms } from '../../services/rooms/roomsService'
 import { searchGuests } from '../../services/guests/guestsService'
 import { cancelReservation, createReservation, listReservations } from '../../services/reservations/reservationsService'
+import { ModifyReservationModal } from '../../components/reception/ModifyReservationModal'
 import { createReservationSchema } from '../../schemas/reservationsSchema'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
@@ -78,6 +79,8 @@ export function ReservationsPage() {
   const [selectedReservationDetails, setSelectedReservationDetails] = useState<Reservation | null>(null)
   const [cancelingReservation, setCancelingReservation] = useState<Reservation | null>(null)
   const [canceling, setCanceling] = useState(false)
+  // v1.7: modificar reserva
+  const [modifyingReservation, setModifyingReservation] = useState<Reservation | null>(null)
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<'all' | ReservationStatus>('all')
@@ -290,7 +293,21 @@ export function ReservationsPage() {
                           {reservation.channel}
                         </span>
                       )}
-                      {reservation.status !== 'cancelled' ? (
+                      {/* v1.7: botón Modificar — solo reservas confirmadas (pre-check-in) */}
+                    {reservation.status === 'confirmed' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setModifyingReservation(reservation)
+                          }}
+                          className="secondary-button compact-button"
+                          style={{ padding: '4px 10px', fontSize: '12px', minHeight: 'auto' }}
+                        >
+                          Modificar
+                        </button>
+                      )}
+                    {reservation.status !== 'cancelled' ? (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -385,6 +402,27 @@ export function ReservationsPage() {
             setSelectedReservationDetails(null)
             handleCancelClick(res)
           }}
+          onModifyRequest={(res) => {
+            setSelectedReservationDetails(null)
+            setModifyingReservation(res)
+          }}
+        />
+      )}
+
+      {/* v1.7: Modal Modificar Reserva */}
+      {modifyingReservation && (
+        <ModifyReservationModal
+          establishmentId={establishmentId}
+          reservation={modifyingReservation}
+          guests={guests}
+          rooms={rooms}
+          onClose={() => setModifyingReservation(null)}
+          onSuccess={(msg) => {
+            setModifyingReservation(null)
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(msg) => setError(msg)}
         />
       )}
     </div>
@@ -590,6 +628,7 @@ interface ReservationDetailsModalProps {
   room?: Room
   onClose: () => void
   onCancelRequest?: (res: Reservation) => void
+  onModifyRequest?: (res: Reservation) => void
 }
 
 function ReservationDetailsModal({
@@ -598,6 +637,7 @@ function ReservationDetailsModal({
   room,
   onClose,
   onCancelRequest,
+  onModifyRequest,
 }: ReservationDetailsModalProps) {
   const nights =
     reservation.checkInDate && reservation.checkOutDate
@@ -735,7 +775,7 @@ function ReservationDetailsModal({
           </div>
         </div>
 
-        <div className="modal-actions" style={{ marginTop: '14px', alignItems: 'center' }}>
+        <div className="modal-actions" style={{ marginTop: '14px', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           {reservation.status === 'confirmed' && (
             <button
               type="button"
@@ -747,6 +787,20 @@ function ReservationDetailsModal({
               }}
             >
               Cancelar reserva
+            </button>
+          )}
+          {/* v1.7: botón Modificar Reserva en modal de detalles */}
+          {reservation.status === 'confirmed' && (
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              style={{ padding: '6px 12px', fontSize: '12px', minHeight: 'auto' }}
+              onClick={() => {
+                onClose()
+                onModifyRequest?.(reservation)
+              }}
+            >
+              Modificar reserva
             </button>
           )}
           <button type="button" className="primary-button compact-button" onClick={onClose}>
@@ -789,6 +843,11 @@ function ReservationModal({
   const [commissionPercent, setCommissionPercent] = useState<number | ''>('')
   const [guestCount, setGuestCount] = useState<number>(1)
   const [guestIds, setGuestIds] = useState<string[]>([])
+  // v1.7: pricingMode + tarifa especial
+  const [pricingMode, setPricingMode] = useState<'standard' | 'manual'>('standard')
+  const [manualPricePerNight, setManualPricePerNight] = useState<number>(0)
+  const [specialRateReason, setSpecialRateReason] = useState('Voluntariado')
+  const [specialRateNote, setSpecialRateNote] = useState('')
 
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -927,6 +986,19 @@ function ReservationModal({
       ])
     )
 
+    // v1.7: validar precio manual
+    const effectiveReason = specialRateReason === 'Otro' ? (specialRateNote.trim() || 'Otro') : specialRateReason
+    if (pricingMode === 'manual') {
+      if (typeof manualPricePerNight !== 'number' || manualPricePerNight < 0 || !isFinite(manualPricePerNight)) {
+        setFormError('El precio manual debe ser un número mayor o igual a 0.')
+        return
+      }
+      if (!effectiveReason.trim()) {
+        setFormError('Ingresa un motivo para la tarifa especial.')
+        return
+      }
+    }
+
     setSubmitting(true)
     try {
       await createReservation({
@@ -939,9 +1011,16 @@ function ReservationModal({
         checkOut,
         pricePerNight,
         channel,
-        guestCount,
+        // v1.7: guestCount siempre número
+        guestCount: saleMode === 'bed' ? 1 : guestCount,
         guestIds,
         ...(commissionPercent !== '' ? { commissionPercent } : {}),
+        // v1.7: pricingMode
+        pricingMode,
+        ...(pricingMode === 'manual' ? {
+          manualPricePerNight,
+          specialRateReason: effectiveReason,
+        } : {}),
       })
       onSaved()
     } catch {
@@ -1235,6 +1314,57 @@ function ReservationModal({
           )}
         </div>
         )}
+
+        {/* v1.7: Selector de Tarifa */}
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block', fontSize: '13px' }}>Tarifa</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+              padding: '7px 12px', borderRadius: 'var(--radius-sm)', flex: 1, justifyContent: 'center',
+              border: `2px solid ${pricingMode === 'standard' ? 'var(--teal)' : 'var(--line)'}`,
+              background: pricingMode === 'standard' ? 'var(--mint)' : 'transparent',
+              fontWeight: pricingMode === 'standard' ? 600 : 400, fontSize: '13px',
+            }}>
+              <input type="radio" name="resPricingMode" value="standard" checked={pricingMode === 'standard'} onChange={() => setPricingMode('standard')} style={{ display: 'none' }} />
+              Tarifa normal
+            </label>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+              padding: '7px 12px', borderRadius: 'var(--radius-sm)', flex: 1, justifyContent: 'center',
+              border: `2px solid ${pricingMode === 'manual' ? 'var(--coral)' : 'var(--line)'}`,
+              background: pricingMode === 'manual' ? '#fff0eb' : 'transparent',
+              fontWeight: pricingMode === 'manual' ? 600 : 400, fontSize: '13px',
+            }}>
+              <input type="radio" name="resPricingMode" value="manual" checked={pricingMode === 'manual'} onChange={() => setPricingMode('manual')} style={{ display: 'none' }} />
+              Tarifa especial
+            </label>
+          </div>
+          {pricingMode === 'manual' && (
+            <div style={{ padding: '10px 12px', background: '#fff8f5', borderRadius: 'var(--radius-sm)', border: '1px solid #f9d5c5' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: specialRateReason === 'Otro' ? '8px' : '0' }}>
+                <label style={{ fontSize: '12px', fontWeight: 600 }}>Precio por noche (BOB)
+                  <input type="number" min={0} step={0.5} value={manualPricePerNight}
+                    onChange={(e) => setManualPricePerNight(Number(e.target.value))} placeholder="0"
+                    style={{ marginTop: '4px', borderColor: 'var(--coral)' }} />
+                </label>
+                <label style={{ fontSize: '12px', fontWeight: 600 }}>Motivo
+                  <select value={specialRateReason} onChange={(e) => setSpecialRateReason(e.target.value)} style={{ marginTop: '4px' }}>
+                    <option>Voluntariado</option>
+                    <option>Cortesía</option>
+                    <option>Acuerdo especial</option>
+                    <option>Otro</option>
+                  </select>
+                </label>
+              </div>
+              {specialRateReason === 'Otro' && (
+                <label style={{ fontSize: '12px', fontWeight: 600 }}>Nota adicional
+                  <input type="text" value={specialRateNote} onChange={(e) => setSpecialRateNote(e.target.value)} placeholder="Describir brevemente..." maxLength={100} style={{ marginTop: '4px' }} />
+                </label>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Resumen de Tarifas & Total Estimado */}
         <div

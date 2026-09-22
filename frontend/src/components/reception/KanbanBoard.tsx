@@ -1,4 +1,4 @@
-import { LogIn, LogOut, FileText, User, Sparkles, Wrench } from 'lucide-react'
+import { LogIn, LogOut, FileText, User, Sparkles, Wrench, Edit2 } from 'lucide-react'
 import type { Reservation } from '../../types/reservations'
 import type { Stay } from '../../types/stays'
 import type { Guest } from '../../types/guests'
@@ -19,6 +19,7 @@ interface KanbanBoardProps {
   onOpenStayDetail: (stay: Stay) => void
   onQuickCheckout: (stay: Stay) => void
   onOpenQuickAction: (roomId: string, bedId?: string) => void
+  onModifyReservation?: (reservation: Reservation) => void
 }
 
 export function KanbanBoard({
@@ -33,6 +34,7 @@ export function KanbanBoard({
   onOpenStayDetail,
   onQuickCheckout,
   onOpenQuickAction,
+  onModifyReservation,
 }: KanbanBoardProps) {
 
   const getGuestName = (guestId?: string | null) => {
@@ -76,9 +78,17 @@ export function KanbanBoard({
                     <div className="card-avatars">
                       <div className="avatar"><User size={12}/></div>
                     </div>
-                    <button type="button" className="kanban-action-btn checkin" onClick={() => onCheckInReservation(res)}>
-                      <LogIn size={14} /> Check-in
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {/* v1.7: botón Modificar solo para confirmadas */}
+                      {onModifyReservation && (
+                        <button type="button" className="kanban-action-btn" style={{ background: 'var(--paper)', color: 'var(--text)', border: '1px solid var(--line)' }} onClick={() => onModifyReservation(res)}>
+                          <Edit2 size={13} /> Modificar
+                        </button>
+                      )}
+                      <button type="button" className="kanban-action-btn checkin" onClick={() => onCheckInReservation(res)}>
+                        <LogIn size={14} /> Check-in
+                      </button>
+                    </div>
                   </div>
                 </div>
               )

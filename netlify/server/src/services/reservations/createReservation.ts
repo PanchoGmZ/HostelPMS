@@ -20,6 +20,10 @@ export interface CreateReservationPayload {
   commissionPercent?: number;
   guestCount?: number;
   guestIds?: string[];
+  // v1.7: pricing mode
+  pricingMode?: 'standard' | 'manual';
+  manualPricePerNight?: number;
+  specialRateReason?: string;
 }
 
 export interface CreateReservationResult {
@@ -62,6 +66,9 @@ export async function createReservationService(
     commissionPercent,
     guestCount,
     guestIds,
+    pricingMode = 'standard',
+    manualPricePerNight,
+    specialRateReason,
   } = payload;
   const requestedCheckIn = payload.checkIn ?? payload.checkInDate;
   const requestedCheckOut = payload.checkOut ?? payload.checkOutDate;
@@ -84,6 +91,16 @@ export async function createReservationService(
     bedIds.some((bedId: unknown) => typeof bedId !== 'string' || (bedId as string).length === 0)
   ) {
     throw new ReservationError('bedIds debe contener identificadores únicos y válidos.');
+  }
+
+  // v1.7: validar tarifa manual
+  if (pricingMode === 'manual') {
+    if (manualPricePerNight === null || manualPricePerNight === undefined || typeof manualPricePerNight !== 'number' || !isFinite(manualPricePerNight) || manualPricePerNight < 0) {
+      throw new ReservationError('Precio manual inválido. Debe ser un número >= 0.');
+    }
+    if (!specialRateReason || typeof specialRateReason !== 'string' || specialRateReason.trim() === '') {
+      throw new ReservationError('Se requiere un motivo para la tarifa especial.');
+    }
   }
 
   // --- Autorización: el caller debe pertenecer al staff de ESTE establecimiento ---
@@ -216,6 +233,15 @@ export async function createReservationService(
         );
       }
       
+      // v1.7: guestCount siempre como número, nunca undefined
+      // bed → 1, full_room → guestCount del payload o 1 como fallback seguro
+      const resolvedGuestCount: number =
+        saleMode === 'bed'
+          ? 1
+          : typeof guestCount === 'number' && guestCount >= 1
+            ? Math.min(guestCount, room.maxGuests ?? 99)
+            : 1;
+
       // Calculate server-side pricing
       let commissionRate = 0;
       let finalCommissionPercent = 0;
@@ -234,10 +260,22 @@ export async function createReservationService(
         const dates = perBedDates[bedId];
         
         let basePrice = 0;
-        if (saleMode === 'full_room' && room.type === 'private') {
+
+        if (pricingMode === 'manual') {
+          // v1.7: tarifa especial — usar precio manual como base
+          // Solo la primera cama lleva el precio en full_room, el resto = 0
+          if (saleMode === 'full_room') {
+            basePrice = bedId === bedIds[0]
+              // manualPricePerNight ya fue validado > = 0 arriba
+              ? (manualPricePerNight as number)
+              : 0;
+          } else {
+            basePrice = manualPricePerNight as number;
+          }
+        } else if (saleMode === 'full_room' && room.type === 'private') {
           // For private rooms, we assign the full price to the first bed
           if (bedId === bedIds[0]) {
-            const countStr = String(guestCount || 1);
+            const countStr = String(resolvedGuestCount);
             basePrice = room.priceByGuestCount?.[countStr] ?? room.basePriceRoom ?? 0;
           } else {
             basePrice = 0; // Other beds in private room are blocked but cost 0
@@ -246,6 +284,7 @@ export async function createReservationService(
           basePrice = bed.basePriceBed ?? room.basePriceRoom ?? 0;
         }
 
+        // v1.7: comisión OTA — si tarifa es 0, el resultado sigue siendo 0
         const nightlyPrice = basePrice * (1 + commissionRate);
 
         for (const d of dates) {
@@ -318,7 +357,6 @@ export async function createReservationService(
       // 4. Crear reservations/{id}/lines/{lineId}
       for (const bedId of bedIds) {
         const lineRef = lineRefByBed[bedId];
-        const bedPrices = pricePerNight[bedId];
         const bedDates = perBedDates[bedId];
         transaction.set(lineRef, {
           bedId,
@@ -335,7 +373,8 @@ export async function createReservationService(
       }
 
       // 5. Crear la reserva (con totalAmount calculado, no confiado del cliente)
-      transaction.set(reservationRef, {
+      // v1.7: snapshot histórico de pricing — todos los campos siempre como valores explícitos
+      const reservationDoc: Record<string, unknown> = {
         channel,
         status: 'confirmed',
         primaryGuestId: guestId || null,
@@ -346,12 +385,22 @@ export async function createReservationService(
         checkOutDate,
         totalAmount: finalTotalAmount,
         currency,
-        ...(commissionPercent !== undefined ? { commissionPercent: finalCommissionPercent } : {}),
-        ...(guestCount !== undefined ? { guestCount } : {}),
+        // v1.7: guestCount siempre número — nunca undefined
+        guestCount: resolvedGuestCount,
+        // v1.7: comisión siempre número
+        commissionPercent: finalCommissionPercent,
+        // v1.7: snapshot histórico de pricing
+        pricingMode,
+        // manualPricePerNight: guardar null si es standard, número si es manual
+        manualPricePerNight: pricingMode === 'manual' && typeof manualPricePerNight === 'number' ? manualPricePerNight : null,
+        // specialRateReason: guardar null si no aplica
+        specialRateReason: pricingMode === 'manual' && specialRateReason ? specialRateReason.trim() : null,
         createdBy: callerUid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+
+      transaction.set(reservationRef, reservationDoc);
     });
 
     return { success: true as const, reservationId: reservationRef.id, totalAmount: finalTotalAmount };

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, type FormEvent } from 'react'
-import { X, UserPlus, UserCheck, AlertTriangle, Loader2 } from 'lucide-react'
+import { X, UserPlus, UserCheck, AlertTriangle, Loader2, Info } from 'lucide-react'
 import { saveGuest } from '../../services/guests/guestsService'
 import { createReservation } from '../../services/reservations/reservationsService'
 import { checkInGuest } from '../../services/stays/staysService'
@@ -29,6 +29,8 @@ function toLocalDateString(date: Date): string {
 }
 
 const countries = [ "Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Birmania", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Ciudad del Vaticano", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guyana", "Guinea", "Guinea ecuatorial", "Guinea-Bisáu", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República del Congo", "República Democrática del Congo", "República Dominicana", "Ruanda", "Rumanía", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Suazilandia", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue" ]
+
+const SPECIAL_RATE_REASONS = ['Voluntariado', 'Cortesía', 'Acuerdo especial', 'Otro']
 
 export function WalkInModal({
   establishmentId,
@@ -69,36 +71,41 @@ export function WalkInModal({
   const [notes, setNotes] = useState('')
 
   // Stay parameters
-  const [nights, setNights] = useState(1)
-  const [pricePerNight, setPricePerNight] = useState(0)
+  // v1.7-hotfix: number | '' para permitir campo vacío temporalmente sin cerrar modal
+  const [nights, setNights] = useState<number | ''>(1)
   const [deposit, setDeposit] = useState(0)
   const [guestCount, setGuestCount] = useState<number>(1)
   const [guestIds, setGuestIds] = useState<string[]>([])
 
+  // v1.7: pricingMode + tarifa especial
+  const [pricingMode, setPricingMode] = useState<'standard' | 'manual'>('standard')
+  const [manualPricePerNight, setManualPricePerNight] = useState<number>(0)
+  const [specialRateReason, setSpecialRateReason] = useState('Voluntariado')
+  const [specialRateNote, setSpecialRateNote] = useState('')
+  // precio estándar calculado (para display)
+  const [standardPricePerNight, setStandardPricePerNight] = useState(0)
+
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Calculated checkout date
+  // v1.7-hotfix: usar typeof guard — '' no produce cálculo inválido
   const checkOutDateStr = useMemo(() => {
     const d = new Date()
-    d.setDate(d.getDate() + Math.max(1, nights))
+    const n = typeof nights === 'number' && nights >= 1 ? nights : 1
+    d.setDate(d.getDate() + n)
     return toLocalDateString(d)
   }, [nights])
 
   // Availability logic
   const occupiedBedIds = useMemo(() => {
     const ids = new Set<string>()
-    // Current active stays
     stays.forEach(s => {
       if (s.status === 'active') {
         s.bedIds?.forEach(id => ids.add(id))
       }
     })
-    
-    // Reservations overlapping [today, checkOutDate)
     const checkInDate = new Date(`${todayStr}T00:00:00Z`);
     const checkOutDate = new Date(`${checkOutDateStr}T00:00:00Z`);
-    
     reservations.forEach(r => {
       if (r.status !== 'confirmed') return;
       if (!r.checkInDate || !r.checkOutDate) return;
@@ -134,18 +141,23 @@ export function WalkInModal({
     ? `Habitación completa (${selectedRoomObj.name})`
     : (effectiveBedObj?.label || (effectiveBedId ? `Cama ${effectiveBedId.slice(-3)}` : 'Sin asignar'))
 
-  // Set default price when bed changes
+  // Set default standard price when bed changes
   useEffect(() => {
     if (isPrivate) {
-      setPricePerNight(selectedRoomObj.priceByGuestCount?.[String(guestCount)] ?? selectedRoomObj.basePriceRoom ?? 0)
+      setStandardPricePerNight(selectedRoomObj.priceByGuestCount?.[String(guestCount)] ?? selectedRoomObj.basePriceRoom ?? 0)
     } else if (effectiveBedObj) {
-      setPricePerNight(effectiveBedObj.basePriceBed ?? selectedRoomObj.basePriceRoom ?? 50)
+      setStandardPricePerNight(effectiveBedObj.basePriceBed ?? selectedRoomObj.basePriceRoom ?? 50)
     }
   }, [effectiveBedObj, selectedRoomObj, isPrivate, guestCount])
 
+  // El precio por noche efectivo para el total estimado
+  const effectivePricePerNight = pricingMode === 'manual' ? manualPricePerNight : standardPricePerNight
+
   const totalEstimate = useMemo(() => {
-    return Math.max(1, nights) * Math.max(0, pricePerNight)
-  }, [nights, pricePerNight])
+    // v1.7-hotfix: '' cuenta como 1 solo para el preview
+    const n = typeof nights === 'number' && nights >= 1 ? nights : 1
+    return n * Math.max(0, effectivePricePerNight)
+  }, [nights, effectivePricePerNight])
 
   // Filter existing guests
   const filteredGuests = useMemo(() => {
@@ -157,6 +169,10 @@ export function WalkInModal({
         g.documentNumber.toLowerCase().includes(q)
     )
   }, [existingGuests, guestSearch])
+
+  const effectiveReason = specialRateReason === 'Otro'
+    ? (specialRateNote.trim() || 'Otro')
+    : specialRateReason
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -189,9 +205,22 @@ export function WalkInModal({
       }
     }
 
-    if (nights <= 0) {
-      setFormError('La estadía debe ser de al menos 1 noche.')
+    // v1.7-hotfix: validación explícita — '' o 0 no cierran modal, muestran error amigable
+    if (typeof nights !== 'number' || nights < 1) {
+      setFormError('Ingresa al menos 1 noche para continuar.')
       return
+    }
+
+    // v1.7: validar precio manual
+    if (pricingMode === 'manual') {
+      if (typeof manualPricePerNight !== 'number' || manualPricePerNight < 0 || !isFinite(manualPricePerNight)) {
+        setFormError('El precio manual debe ser un número mayor o igual a 0.')
+        return
+      }
+      if (!effectiveReason.trim()) {
+        setFormError('Ingresa un motivo para la tarifa especial.')
+        return
+      }
     }
 
     setSubmitting(true)
@@ -204,6 +233,7 @@ export function WalkInModal({
             firstName: firstName.trim(),
             lastName: lastName.trim(),
             documentType: docType,
+            // v1.7: documentNumber siempre STRING — no convertir a number
             documentNumber: docNumber.trim(),
             nationality: nationality.trim(),
             birthDate: birthDate || null,
@@ -228,14 +258,20 @@ export function WalkInModal({
         dates.push(d.toISOString().slice(0, 10))
       }
 
+      // v1.7: para la matriz pricePerNight enviamos precio estándar como placeholder
+      // El backend usará el pricingMode para determinar el precio real
+      const placeholderPrice = pricingMode === 'standard' ? standardPricePerNight : 0
       const pricePerNightMatrix = Object.fromEntries(
         effectiveBedIds.map((bId) => [
           bId,
-          Object.fromEntries(dates.map((date) => [date, isPrivate ? (bId === effectiveBedIds[0] ? pricePerNight : 0) : pricePerNight])),
+          Object.fromEntries(dates.map((date) => [date, isPrivate ? (bId === effectiveBedIds[0] ? placeholderPrice : 0) : placeholderPrice])),
         ])
       )
 
       // 3. Create instant reservation (will fail if availability conflicts in backend)
+      // v1.7: guestCount siempre número — bed=1, full_room=guestCount explícito
+      const resolvedGuestCount = isPrivate ? guestCount : 1
+
       const resResult = await createReservation({
         establishmentId,
         guestId: finalGuestId,
@@ -246,8 +282,15 @@ export function WalkInModal({
         checkOut: checkOutDateStr,
         pricePerNight: pricePerNightMatrix,
         channel: 'direct',
-        guestCount: isPrivate ? guestCount : undefined,
+        // v1.7: guestCount siempre número, nunca undefined
+        guestCount: resolvedGuestCount,
         guestIds: isPrivate ? guestIds.filter(id => id.trim() !== '') : undefined,
+        // v1.7: pricingMode y precio manual
+        pricingMode,
+        ...(pricingMode === 'manual' ? {
+          manualPricePerNight,
+          specialRateReason: effectiveReason,
+        } : {}),
       })
 
       if (!resResult?.reservationId) {
@@ -382,12 +425,13 @@ export function WalkInModal({
             </div>
             <div>
               <label>Nº Documento *</label>
+              {/* v1.7: type="text" — documentos alfanuméricos como AT117122 */}
               <input
                 type="text"
                 value={docNumber}
                 onChange={(e) => setDocNumber(e.target.value)}
                 required
-                placeholder="12345678"
+                placeholder="12345678 o AT117122"
               />
             </div>
             <div>
@@ -564,26 +608,31 @@ export function WalkInModal({
           )}
         </div>
 
-        {/* Stay details */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '14px' }}>
+        {/* Noches y Depósito */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
           <div>
             <label>Noches</label>
             <input
+              id="walk-in-nights"
               type="number"
               min="1"
               value={nights}
-              onChange={(e) => setNights(Math.max(1, Number(e.target.value)))}
-              required
-            />
-          </div>
-          <div>
-            <label>Precio / Noche (BOB)</label>
-            <input
-              type="number"
-              min="0"
-              value={pricePerNight}
-              onChange={(e) => setPricePerNight(Number(e.target.value))}
-              required
+              onChange={(e) => {
+                // v1.7-hotfix: permitir '' temporalmente — no colapsar a 1 mientras el usuario edita
+                const val = e.target.value
+                if (val === '') {
+                  setNights('')
+                } else {
+                  const n = parseInt(val, 10)
+                  if (!isNaN(n) && n >= 0) setNights(n)
+                }
+              }}
+              onKeyDown={(e) => {
+                // Prevenir que Enter en el input dispare submit o cierre el modal
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                }
+              }}
             />
           </div>
           <div>
@@ -597,16 +646,104 @@ export function WalkInModal({
           </div>
         </div>
 
+        {/* v1.7: Selector de Tarifa */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block', fontSize: '13px' }}>Tarifa</label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+            <label
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                padding: '8px 14px', borderRadius: 'var(--radius-sm)',
+                border: `2px solid ${pricingMode === 'standard' ? 'var(--teal)' : 'var(--line)'}`,
+                background: pricingMode === 'standard' ? 'var(--mint)' : 'transparent',
+                fontWeight: pricingMode === 'standard' ? 600 : 400, flex: 1, justifyContent: 'center',
+                fontSize: '13px',
+              }}
+            >
+              <input type="radio" name="pricingModeWalkin" value="standard" checked={pricingMode === 'standard'} onChange={() => setPricingMode('standard')} style={{ display: 'none' }} />
+              Tarifa normal
+            </label>
+            <label
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
+                padding: '8px 14px', borderRadius: 'var(--radius-sm)',
+                border: `2px solid ${pricingMode === 'manual' ? 'var(--coral)' : 'var(--line)'}`,
+                background: pricingMode === 'manual' ? '#fff0eb' : 'transparent',
+                fontWeight: pricingMode === 'manual' ? 600 : 400, flex: 1, justifyContent: 'center',
+                fontSize: '13px',
+              }}
+            >
+              <input type="radio" name="pricingModeWalkin" value="manual" checked={pricingMode === 'manual'} onChange={() => setPricingMode('manual')} style={{ display: 'none' }} />
+              Tarifa especial
+            </label>
+          </div>
+
+          {pricingMode === 'standard' ? (
+            <div style={{ padding: '8px 12px', background: 'var(--paper)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'var(--muted)' }}>Precio por noche (calculado):</span>
+              <strong>{standardPricePerNight} BOB</strong>
+            </div>
+          ) : (
+            <div style={{ padding: '12px', background: '#fff8f5', borderRadius: 'var(--radius-sm)', border: '1px solid #f9d5c5' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: specialRateReason === 'Otro' ? '10px' : '0' }}>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Precio por noche (BOB)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={manualPricePerNight}
+                    onChange={(e) => setManualPricePerNight(Number(e.target.value))}
+                    placeholder="0"
+                    style={{ borderColor: 'var(--coral)' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Motivo</label>
+                  <select value={specialRateReason} onChange={(e) => setSpecialRateReason(e.target.value)}>
+                    {SPECIAL_RATE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+              {specialRateReason === 'Otro' && (
+                <div>
+                  <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Nota adicional</label>
+                  <input
+                    type="text"
+                    value={specialRateNote}
+                    onChange={(e) => setSpecialRateNote(e.target.value)}
+                    placeholder="Describir brevemente el motivo..."
+                    maxLength={100}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Summary Card */}
         <div style={{ padding: '10px 14px', background: 'var(--mint)', borderRadius: 'var(--radius-sm)', marginBottom: '14px', fontSize: '13px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
             <span>Fecha de Salida Prevista:</span>
             <strong>{checkOutDateStr}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
             <span>Total Estimado del Alojamiento:</span>
-            <strong style={{ fontSize: '15px', color: 'var(--teal-deep)' }}>{totalEstimate} BOB</strong>
+            <strong style={{ fontSize: '15px', color: totalEstimate === 0 ? 'var(--muted)' : 'var(--teal-deep)' }}>
+              {totalEstimate} BOB
+              {totalEstimate === 0 && pricingMode === 'manual' && (
+                <span style={{ fontSize: '11px', color: 'var(--muted)', fontWeight: 400, marginLeft: '6px' }}>
+                  (gratuito)
+                </span>
+              )}
+            </strong>
           </div>
+          {pricingMode === 'manual' && (
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'flex-start', color: 'var(--muted)', fontSize: '11px' }}>
+              <Info size={12} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <span>Tarifa especial: {effectiveReason}. El backend registrará el precio y motivo.</span>
+            </div>
+          )}
         </div>
 
         <div className="modal-actions">

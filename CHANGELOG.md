@@ -1,5 +1,18 @@
 # Changelog — Pata y Perro PMS
 
+## v1.7
+Fecha: 2026-09-22
+
+- Corregido error de Walk-in por `guestCount` indefinido (causa del 500 en Firestore).
+- Walk-in y reservas permiten tarifa 0 BOB (voluntariado, cortesía, acuerdos especiales).
+- Soporte explícito para `pricingMode: standard | manual` en backend.
+- Nuevo botón **Modificar Reserva** (página Reservas y Kanban de Llegadas).
+- Modificación segura de precios antes del check-in con recalculo server-side.
+- Historial de modificaciones guardado en subcollección `history` de cada reserva.
+- Mejoras en validación de precios — precio 0 es válido en todos los flujos.
+- Documentos alfanuméricos (ej. AT117122) funcionan correctamente.
+- Consola: `Pata y Perro PMS — v1.7`
+
 ## v1.6
 Fecha: 2026-09-17
 
