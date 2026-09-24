@@ -6,7 +6,7 @@ export interface Guest {
   documentNumber: string
   nationality: string
   birthDate: string | null
-  whatsapp: string
+  whatsapp: string | null
   email: string | null
   occupation: string | null
   previousCity: string | null

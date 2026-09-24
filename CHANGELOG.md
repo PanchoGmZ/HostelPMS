@@ -1,5 +1,11 @@
 # Changelog — Pata y Perro PMS
 
+## v1.10
+Fecha: 2026-09-24
+
+- Ajuste de campos obligatorios y opcionales en registro de huéspedes.
+- WhatsApp, email, contacto de emergencia y notas ahora son opcionales.
+- Validación unificada entre Huéspedes y Nueva Reserva.
 ## v1.9
 Fecha: 2026-09-24
 
