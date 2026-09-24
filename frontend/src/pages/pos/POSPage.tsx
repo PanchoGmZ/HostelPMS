@@ -28,6 +28,7 @@ import type { Stay } from '../../types/stays'
 import type { Guest } from '../../types/guests'
 import type { Room } from '../../types/rooms'
 import type { Product, Category } from '../../types/inventory'
+import { CURRENCIES } from '../../utils/currencies'
 
 import './POSPage.css'
 
@@ -54,9 +55,10 @@ export function POSPage() {
   // Cart state
   const [cartItems, setCartItems] = useState<CartItem[]>([])
 
-  // Pay mode
   const [payMode, setPayMode] = useState<'account' | 'payNow'>('account')
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
+  const [currencyCode, setCurrencyCode] = useState<string>('BOB')
+  const [receivedAmount, setReceivedAmount] = useState<number>(0)
 
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -121,6 +123,10 @@ export function POSPage() {
     return cartItems.reduce((acc, item) => acc + (item.product.salePrice * item.quantity), 0)
   }, [cartItems])
 
+  useEffect(() => {
+    setReceivedAmount(total)
+  }, [total])
+
   const canSubmit = selectedStayId && cartItems.length > 0 && !submitting
 
   const addProductToCart = (product: Product) => {
@@ -179,7 +185,7 @@ export function POSPage() {
           quantity: item.quantity
         })),
         ...(payMode === 'payNow'
-          ? { payNow: { method: paymentMethod } }
+          ? { payNow: { method: paymentMethod, currencyCode, receivedAmount } }
           : {}),
       })
       const modeText =
@@ -491,24 +497,54 @@ export function POSPage() {
                 </div>
 
                 {payMode === 'payNow' && (
-                  <label style={{ marginBottom: '16px', display: 'block' }}>
-                    <span style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 600 }}>Método de pago</span>
-                    <select
-                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', outline: 'none' }}
-                      value={paymentMethod}
-                      onChange={(e) =>
-                        setPaymentMethod(
-                          e.target.value as 'cash' | 'card' | 'transfer' | 'qr'
-                        )
-                      }
-                    >
-                      {PAYMENT_METHODS.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div style={{ marginBottom: '16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 600 }}>Método de pago</span>
+                      <select
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', outline: 'none' }}
+                        value={paymentMethod}
+                        onChange={(e) =>
+                          setPaymentMethod(
+                            e.target.value as 'cash' | 'card' | 'transfer' | 'qr'
+                          )
+                        }
+                      >
+                        {PAYMENT_METHODS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ display: 'block' }}>
+                      <span style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 600 }}>Moneda recibida</span>
+                      <select
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', outline: 'none' }}
+                        value={currencyCode}
+                        onChange={(e) => setCurrencyCode(e.target.value)}
+                      >
+                        {CURRENCIES.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code} — {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ display: 'block' }}>
+                      <span style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: 600 }}>Monto recibido físico</span>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)', outline: 'none' }}
+                        value={receivedAmount}
+                        onChange={(e) => setReceivedAmount(Number(e.target.value))}
+                        required
+                      />
+                    </label>
+                  </div>
                 )}
 
                 <button

@@ -248,6 +248,26 @@ export function ReportsPage() {
             />
           </section>
 
+          {/* Ingresos por Moneda */}
+          {metrics?.revenueByCurrency && Object.keys(metrics.revenueByCurrency).length > 0 && (
+            <section className="summary-section" style={{ marginBottom: '24px' }}>
+              <div className="section-heading">
+                <h2>
+                  <DollarSign size={19} /> Ingresos físicos recibidos (por moneda)
+                </h2>
+                <span>Últimos {period} días</span>
+              </div>
+              <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                {Object.entries(metrics.revenueByCurrency).map(([cur, amount]) => (
+                  <div key={cur} style={{ background: 'white', padding: '16px', borderRadius: '8px', border: '1px solid var(--line)', minWidth: '150px' }}>
+                    <div style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: 600, marginBottom: '4px' }}>{cur}</div>
+                    <strong style={{ fontSize: '24px', color: 'var(--teal)' }}>{amount.toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* Tabla Resúmenes Diarios */}
           <section className="summary-section">
             <div className="section-heading">
@@ -330,7 +350,13 @@ export function ReportsPage() {
                           </span>
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600 }}>
-                          {(summary.revenue ?? 0).toFixed(0)} BOB
+                          {summary.revenueByCurrency && Object.keys(summary.revenueByCurrency).length > 0 ? (
+                            Object.entries(summary.revenueByCurrency).map(([cur, amt]) => (
+                              <div key={cur} style={{ fontSize: '12px' }}>{amt.toFixed(2)} {cur}</div>
+                            ))
+                          ) : (
+                            <>{(summary.revenue ?? 0).toFixed(2)} BOB</>
+                          )}
                         </td>
                       </tr>
                     ))}

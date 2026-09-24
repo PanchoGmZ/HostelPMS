@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { Eye, Pencil, Plus, Search, Users, X, Globe, ArrowDownUp, Filter, IdCard, Phone } from 'lucide-react'
+import { Eye, Pencil, Plus, Search, Users, Globe, ArrowDownUp, Filter, IdCard, Phone } from 'lucide-react'
 import { useAuth } from '../../context/useAuth'
 import { saveGuest, searchGuests } from '../../services/guests/guestsService'
 import type { Guest } from '../../types/guests'
 import { GuestDetailModal } from '../../components/guests/GuestDetailModal'
-
-type Draft = Omit<Guest, 'id' | 'searchName'>
-const empty: Draft = { firstName: '', lastName: '', documentType: 'passport', documentNumber: '', nationality: '', birthDate: null, whatsapp: '', email: null, occupation: null, previousCity: null, nextCity: null, emergencyContact: null, notes: null }
-const toDraft = (guest: Guest): Draft => ({ firstName: guest.firstName, lastName: guest.lastName, documentType: guest.documentType, documentNumber: guest.documentNumber, nationality: guest.nationality, birthDate: guest.birthDate, whatsapp: guest.whatsapp, email: guest.email, occupation: guest.occupation, previousCity: guest.previousCity, nextCity: guest.nextCity, emergencyContact: guest.emergencyContact, notes: guest.notes })
+import { GuestModal, type Draft, emptyDraft, toDraft } from '../../components/guests/GuestModal'
 
 export function GuestsPage() {
   const { session } = useAuth(); const establishmentId = session?.establishmentId
@@ -45,7 +42,7 @@ export function GuestsPage() {
             <h1>Huéspedes</h1>
             <p>Encuentra perfiles rápido y conserva la información de cada viajero.</p>
           </div>
-          <button className="primary-button compact-button" type="button" onClick={() => setEditor({ draft: empty })}>
+          <button className="primary-button compact-button" type="button" onClick={() => setEditor({ draft: emptyDraft })}>
             <Plus size={18} /> Nuevo huésped
           </button>
         </div>
@@ -145,76 +142,4 @@ export function GuestsPage() {
   )
 }
 
-const countries = [ "Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Birmania", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Ciudad del Vaticano", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guyana", "Guinea", "Guinea ecuatorial", "Guinea-Bisáu", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República del Congo", "República Democrática del Congo", "República Dominicana", "Ruanda", "Rumanía", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Suazilandia", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue" ];
 
-function GuestModal({ editor, onChange, onClose, onSubmit }: { editor: { id?: string; draft: Draft }; onChange: (value: { id?: string; draft: Draft }) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  const d = editor.draft;
-  const field = (key: keyof Draft) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => onChange({ ...editor, draft: { ...d, [key]: event.target.value } });
-  
-  let ageStr = '';
-  if (d.birthDate) {
-    const bDate = new Date(d.birthDate);
-    const today = new Date();
-    let age = today.getFullYear() - bDate.getFullYear();
-    const m = today.getMonth() - bDate.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < bDate.getDate())) {
-      age--;
-    }
-    ageStr = `${age} años`;
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <form className="modal-form guest-modal" onSubmit={onSubmit}>
-        <div className="modal-header">
-          <div><span className="kicker">Registro</span><h2>{editor.id ? 'Editar huésped' : 'Nuevo huésped'}</h2></div>
-          <button type="button" onClick={onClose}><X size={19} /></button>
-        </div>
-        <div className="form-row">
-          <label>Nombre<input value={d.firstName} onChange={field('firstName')} required /></label>
-          <label>Apellido<input value={d.lastName} onChange={field('lastName')} required /></label>
-        </div>
-        <div className="form-row">
-          <label>Documento
-            <select value={d.documentType} onChange={field('documentType')} required>
-              <option value="passport">Pasaporte</option>
-              <option value="national_id">Cédula de Identidad</option>
-              <option value="dni">DNI</option>
-            </select>
-          </label>
-          <label>Número<input value={d.documentNumber} onChange={field('documentNumber')} required /></label>
-        </div>
-        <div className="form-row">
-          <label>Nacionalidad
-            <input list="countries" value={d.nationality} onChange={field('nationality')} required placeholder="Ej: Argentina" />
-            <datalist id="countries">
-              {countries.map(c => <option key={c} value={c} />)}
-            </datalist>
-          </label>
-          <label>WhatsApp<input value={d.whatsapp} onChange={field('whatsapp')} /></label>
-        </div>
-        <div className="form-row">
-          <label>Fecha de nacimiento
-            <input type="date" value={d.birthDate ?? ''} onChange={field('birthDate')} required />
-          </label>
-          <label>Edad
-            <input type="text" value={ageStr} readOnly disabled style={{ background: '#f9fafb', cursor: 'not-allowed' }} placeholder="Calculada de la fecha" />
-          </label>
-        </div>
-        <div className="form-row">
-          <label>Email<input type="email" value={d.email ?? ''} onChange={field('email')} required /></label>
-          <label>Ciudad anterior<input value={d.previousCity ?? ''} onChange={field('previousCity')} required /></label>
-        </div>
-        <div className="form-row">
-          <label>Siguiente destino<input value={d.nextCity ?? ''} onChange={field('nextCity')} required /></label>
-          <label>Contacto emergencia<input value={d.emergencyContact ?? ''} onChange={field('emergencyContact')} /></label>
-        </div>
-        <label>Notas<textarea value={d.notes ?? ''} onChange={field('notes')} rows={3} /></label>
-        <div className="modal-actions">
-          <button className="secondary-button" type="button" onClick={onClose}>Cancelar</button>
-          <button className="primary-button" type="submit">Guardar</button>
-        </div>
-      </form>
-    </div>
-  );
-}

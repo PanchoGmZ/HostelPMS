@@ -17,6 +17,8 @@ export const addMovementSchema = z.object({
   type: z.enum(['in', 'out']),
   amount: z.number().positive('El monto debe ser mayor a 0'),
   method: z.enum(['cash', 'card', 'transfer', 'qr']),
+  currencyCode: z.string().optional(),
+  receivedAmount: z.number().optional(),
   description: z.string().min(1, 'Ingresa una descripción para el movimiento'),
 })
 

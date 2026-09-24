@@ -12,6 +12,8 @@ export interface AddConsumptionPayload {
   payNow?: {
     method: 'cash' | 'card' | 'transfer' | 'qr';
     reference?: string;
+    currencyCode?: string;
+    receivedAmount?: number;
   };
 }
 
@@ -185,6 +187,8 @@ export async function addConsumptionService(
           method: payNow.method,
           status: 'completed',
           reference: payNow.reference || null,
+          currencyCode: payNow.currencyCode || 'BOB',
+          receivedAmount: payNow.receivedAmount ?? totalAmount,
           createdAt: now,
         };
 
@@ -200,6 +204,8 @@ export async function addConsumptionService(
             type: 'payment',
             amount: totalAmount,
             method: payNow.method,
+            currencyCode: payNow.currencyCode || 'BOB',
+            receivedAmount: payNow.receivedAmount ?? totalAmount,
             description: `Consumo POS - ${items.length} producto(s) - ${stayId}`,
             relatedFolioId: folioRef.id,
             relatedPaymentId: paymentIdResult,

@@ -9,6 +9,8 @@ export interface RecordPaymentPayload {
   amount: number;
   method: string;
   reference?: string;
+  currencyCode?: string;
+  receivedAmount?: number;
 }
 
 export interface RecordPaymentResult {
@@ -31,7 +33,7 @@ export async function recordPaymentService(
   getFirebaseAdmin();
   const db = getFirestore();
 
-  const { establishmentId, stayId, amount, method, reference } = payload;
+  const { establishmentId, stayId, amount, method, reference, currencyCode, receivedAmount } = payload;
 
   if (!establishmentId || !stayId || typeof amount !== 'number' || !method) {
     throw new PaymentError('Parámetros inválidos.');
@@ -87,6 +89,8 @@ export async function recordPaymentService(
           method,
           status: 'completed',
           reference: reference || null,
+          currencyCode: currencyCode || 'BOB',
+          receivedAmount: receivedAmount ?? amount,
           createdAt: Timestamp.now(),
         },
       ];
@@ -111,6 +115,8 @@ export async function recordPaymentService(
           type: 'payment',
           amount,
           method,
+          currencyCode: currencyCode || 'BOB',
+          receivedAmount: receivedAmount ?? amount,
           description: `Pago de folio - ${stayId}`,
           relatedFolioId: folioRef.id,
           relatedPaymentId: paymentId, // Asentamos explícitamente el paymentId para auditoría

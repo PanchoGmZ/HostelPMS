@@ -6,7 +6,6 @@ import {
   Banknote,
   CheckCircle2,
   Clock,
-  DollarSign,
   History,
   LockKeyhole,
   Plus,
@@ -18,6 +17,7 @@ import { useAuth } from '../../context/useAuth'
 import { addCashMovement, calculateCashSummary, closeCashShift, listCashShifts, openCashShift } from '../../services/cash/cashService'
 import { addMovementSchema, closeShiftSchema, openShiftSchema } from '../../schemas/cashSchema'
 import type { CashShift } from '../../types/cash'
+import { CURRENCIES } from '../../utils/currencies'
 
 function formatDateTime(value?: { seconds: number } | null) {
   if (!value?.seconds) return '-'
@@ -170,24 +170,21 @@ export function CashPage() {
           </strong>
         </div>
 
-        <div className="product-card" style={{ padding: '14px 16px' }}>
-          <div className="product-top">
-            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Ingresos en Efectivo</span>
-            <ArrowDownLeft size={18} color="#1b5e30" />
+        {/* Render grouped currencies */}
+        <div style={{ gridColumn: '1 / -1', background: '#f8fafc', padding: '16px', borderRadius: '8px', border: '1px solid var(--line)', marginTop: '8px' }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '12px', color: 'var(--ink)' }}>EFECTIVO RECIBIDO (POR MONEDA)</h3>
+          <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+            {activeShift ? Object.entries(activeCashSummary.byCurrency).map(([cur, data]) => (
+              <div key={cur} style={{ background: '#fff', padding: '10px 14px', borderRadius: '6px', border: '1px solid var(--line)', minWidth: '120px' }}>
+                <div style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 600 }}>{cur}</div>
+                <strong style={{ fontSize: '18px', color: 'var(--teal)' }}>
+                  {data.expected.toFixed(2)}
+                </strong>
+              </div>
+            )) : (
+              <span style={{ fontSize: '13px', color: 'var(--muted)' }}>--</span>
+            )}
           </div>
-          <strong style={{ fontSize: '20px', color: '#1b5e30' }}>
-            {activeShift ? `+${activeCashSummary.cashIn} BOB` : '--'}
-          </strong>
-        </div>
-
-        <div className="product-card" style={{ padding: '14px 16px' }}>
-          <div className="product-top">
-            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Efectivo Esperado en Caja</span>
-            <DollarSign size={18} color="var(--teal)" />
-          </div>
-          <strong style={{ fontSize: '20px', color: 'var(--teal)' }}>
-            {activeShift ? `${activeCashSummary.expectedTotal} BOB` : '--'}
-          </strong>
         </div>
       </section>
 
@@ -355,6 +352,7 @@ export function CashPage() {
           establishmentId={establishmentId}
           shift={activeShift}
           expectedTotal={activeCashSummary.expectedTotal}
+          byCurrency={activeCashSummary.byCurrency}
           onClose={() => setShowCloseModal(false)}
           onSaved={() => {
             setShowCloseModal(false)
@@ -486,6 +484,7 @@ interface CloseShiftModalProps {
   establishmentId: string
   shift: CashShift
   expectedTotal: number
+  byCurrency: Record<string, { in: number; out: number; expected: number }>
   onClose: () => void
   onSaved: () => void
   onError: (msg: string) => void
@@ -495,6 +494,7 @@ function CloseShiftModal({
   establishmentId,
   shift,
   expectedTotal,
+  byCurrency,
   onClose,
   onSaved,
   onError,
@@ -562,14 +562,24 @@ function CloseShiftModal({
           </div>
         )}
 
-        <div style={{ background: '#f4f8f6', padding: '12px', borderRadius: '6px', fontSize: '13px', display: 'grid', gap: '4px' }}>
+        <div style={{ background: '#f4f8f6', padding: '12px', borderRadius: '6px', fontSize: '13px', display: 'grid', gap: '4px', marginBottom: '14px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <span>Efectivo Inicial:</span>
             <strong>{shift.openingAmount} BOB</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px' }}>
-            <span>Efectivo Esperado en Sistema:</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '2px', borderBottom: '1px solid #dcece3', paddingBottom: '8px', marginBottom: '8px' }}>
+            <span>Efectivo Esperado (Total en BOB aplicados):</span>
             <strong style={{ color: 'var(--teal)' }}>{expectedTotal} BOB</strong>
+          </div>
+          
+          <div style={{ marginTop: '4px' }}>
+            <strong style={{ display: 'block', marginBottom: '6px', color: 'var(--ink)' }}>Efectivo por moneda:</strong>
+            {Object.entries(byCurrency).map(([cur, data]) => (
+              <div key={cur} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2px' }}>
+                <span style={{ color: 'var(--muted)' }}>{cur} esperado:</span>
+                <strong style={{ color: 'var(--teal-deep)' }}>{data.expected.toFixed(2)} {cur}</strong>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -645,6 +655,8 @@ function AddMovementModal({
   const [type, setType] = useState<'in' | 'out'>('in')
   const [amount, setAmount] = useState<number>(0)
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
+  const [currencyCode, setCurrencyCode] = useState<string>('BOB')
+  const [receivedAmount, setReceivedAmount] = useState<number>(0)
   const [description, setDescription] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -658,6 +670,8 @@ function AddMovementModal({
       type,
       amount,
       method,
+      currencyCode,
+      receivedAmount,
       description,
     })
 
@@ -674,6 +688,8 @@ function AddMovementModal({
         type,
         amount,
         method,
+        currencyCode,
+        receivedAmount,
         description,
       })
       onSaved()
@@ -736,15 +752,23 @@ function AddMovementModal({
           />
         </label>
 
+        <div style={{ padding: '10px', background: '#f8fafc', borderRadius: '6px', fontSize: '12px', color: 'var(--muted)', marginBottom: '12px', border: '1px solid var(--line)' }}>
+          <strong style={{ color: 'var(--ink)' }}>Nota sobre montos:</strong> El <strong>Monto para Balance General (BOB)</strong> es el valor contable en bolivianos que suma o resta al total esperado. Si recibes moneda extranjera, usa el <strong>Monto Físico Exacto</strong> para registrar la cantidad real del billete.
+        </div>
+
         <div className="form-row">
           <label>
-            Monto (BOB)
+            Monto para Balance General (BOB)
             <input
               type="number"
               min="0.5"
               step="0.5"
               value={amount}
-              onChange={(e) => setAmount(Number(e.target.value))}
+              onChange={(e) => {
+                const val = Number(e.target.value)
+                setAmount(val)
+                if (currencyCode === 'BOB') setReceivedAmount(val)
+              }}
               required
             />
           </label>
@@ -759,7 +783,36 @@ function AddMovementModal({
           </label>
         </div>
 
-        <div className="modal-actions">
+        {method === 'cash' && (
+          <div className="form-row" style={{ marginTop: '8px', background: '#f4f8f6', padding: '12px', borderRadius: '8px', border: '1px solid #dcece3' }}>
+            <label>
+              Moneda real recibida / entregada
+              <select
+                value={currencyCode}
+                onChange={(e) => setCurrencyCode(e.target.value)}
+              >
+                {CURRENCIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.code} — {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Monto Físico Exacto ({currencyCode})
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={receivedAmount}
+                onChange={(e) => setReceivedAmount(Number(e.target.value))}
+                required
+              />
+            </label>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: '16px' }}>
           <button className="secondary-button" type="button" onClick={onClose} disabled={submitting}>
             Cancelar
           </button>

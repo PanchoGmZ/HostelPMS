@@ -1,5 +1,19 @@
 # Changelog — Pata y Perro PMS
 
+## v1.9
+Fecha: 2026-09-24
+
+- Paridad de interfaz en la pantalla principal de Reservas, unificando el modal de creación con el Dashboard.
+- Botón y Modal de confirmación "Eliminar reserva" (soft-delete, libera camas y preserva historia).
+- Flujo de Nuevo Huésped inline dentro de la ventana de Nueva Reserva.
+- Campo de Precio Acordado (total de reserva) para recalculo inteligente de tarifa por noche sin requerir matemáticas manuales.
+
+## v1.8
+Fecha: 2026-09-24
+
+- Registro explícito de moneda recibida (USD, EUR, BOB, etc.) en Folios de Check-in y movimientos de caja.
+- Resumen y desglose de caja por divisa al cerrar turno.
+- Refactor para asegurar persistencia en variables de estado sin generar errores en cierres de turno.
 ## v1.7
 Fecha: 2026-09-22
 

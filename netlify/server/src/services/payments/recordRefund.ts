@@ -106,6 +106,8 @@ export async function recordRefundService(
           originalMethod: originalPayment.method || null,
           status: 'completed',
           reference: `Reembolso de ${paymentId}`,
+          currencyCode: originalPayment.currencyCode || 'BOB',
+          receivedAmount: -amount,
           createdAt: Timestamp.now(),
         },
       ];
@@ -129,6 +131,8 @@ export async function recordRefundService(
           type: 'out', // Egreso de dinero (refund)
           amount: amount, // Monto positivo para el egreso (así funciona el frontend)
           method: originalPayment.method || 'cash', // HEREDA el método original (muy importante)
+          currencyCode: originalPayment.currencyCode || 'BOB',
+          receivedAmount: amount, // Positive amount for the out movement
           description: `Reembolso de folio - ${stayId}`,
           relatedFolioId: folioRef.id,
           relatedPaymentId: refundId,

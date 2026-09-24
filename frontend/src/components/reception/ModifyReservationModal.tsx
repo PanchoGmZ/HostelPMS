@@ -50,8 +50,8 @@ export function ModifyReservationModal({
   const [pricingMode, setPricingMode] = useState<'standard' | 'manual'>(
     reservation.pricingMode ?? 'standard'
   )
-  const [manualPricePerNight, setManualPricePerNight] = useState<number>(
-    reservation.manualPricePerNight ?? 0
+  const [manualTotalAmount, setManualTotalAmount] = useState<number>(
+    reservation.manualTotalAmount ?? reservation.totalAmount ?? 0
   )
   const [specialRateReason, setSpecialRateReason] = useState(
     SPECIAL_RATE_REASONS.includes(reservation.specialRateReason ?? '')
@@ -76,11 +76,10 @@ export function ModifyReservationModal({
   // Preview de total estimado (orientativo, el servidor recalcula)
   const previewTotal = (() => {
     if (pricingMode === 'manual') {
-      const base = manualPricePerNight
       const commRate = (channel === 'booking' || channel === 'airbnb') && commissionPercent !== ''
         ? Number(commissionPercent) / 100
         : 0
-      return base * (1 + commRate) * nights
+      return manualTotalAmount * (1 + commRate)
     }
     // standard: solo referencial
     return reservation.totalAmount
@@ -107,8 +106,8 @@ export function ModifyReservationModal({
     }
 
     if (pricingMode === 'manual') {
-      if (typeof manualPricePerNight !== 'number' || manualPricePerNight < 0 || !isFinite(manualPricePerNight)) {
-        setFormError('El precio manual debe ser un número mayor o igual a 0.')
+      if (typeof manualTotalAmount !== 'number' || manualTotalAmount < 0 || !isFinite(manualTotalAmount)) {
+        setFormError('El precio total acordado debe ser un número mayor o igual a 0.')
         return
       }
       if (!effectiveReason.trim()) {
@@ -138,7 +137,7 @@ export function ModifyReservationModal({
         pricingMode,
         ...(pricingMode === 'manual'
           ? {
-              manualPricePerNight,
+              manualTotalAmount,
               specialRateReason: effectiveReason,
             }
           : {}),
@@ -412,17 +411,20 @@ export function ModifyReservationModal({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
               <div>
                 <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block', fontSize: '13px' }}>
-                  Precio por noche (BOB)
+                  Precio acordado (Total)
                 </label>
-                <input
-                  type="number"
-                  min={0}
-                  step={0.5}
-                  value={manualPricePerNight}
-                  onChange={(e) => setManualPricePerNight(Number(e.target.value))}
-                  placeholder="0"
-                  style={{ borderColor: 'var(--coral)' }}
-                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={manualTotalAmount}
+                    onChange={(e) => setManualTotalAmount(Number(e.target.value))}
+                    placeholder="0"
+                    style={{ borderColor: 'var(--coral)', width: '120px' }}
+                  />
+                  <strong>BOB</strong>
+                </div>
               </div>
               <div>
                 <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block', fontSize: '13px' }}>
@@ -479,8 +481,8 @@ export function ModifyReservationModal({
           </div>
           {pricingMode === 'manual' && (
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', paddingTop: '4px', borderTop: '1px solid rgba(0,0,0,0.08)' }}>
-              <strong>Nuevo total estimado:</strong>
-              <strong style={{ color: manualPricePerNight === 0 ? 'var(--muted)' : 'var(--teal)' }}>
+              <strong>Nuevo total acordado:</strong>
+              <strong style={{ color: manualTotalAmount === 0 ? 'var(--muted)' : 'var(--teal)' }}>
                 {previewTotal.toFixed(1)} BOB
               </strong>
             </div>

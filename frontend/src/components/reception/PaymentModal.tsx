@@ -4,6 +4,7 @@ import { processPayment } from '../../services/payments/paymentsService'
 import type { Stay } from '../../types/stays'
 import type { Folio } from '../../types/folios'
 import type { CashShift } from '../../types/cash'
+import { CURRENCIES } from '../../utils/currencies'
 
 interface PaymentModalProps {
   establishmentId: string
@@ -28,6 +29,8 @@ export function PaymentModal({
   const [amount, setAmount] = useState<number>(currentBalance > 0 ? currentBalance : 0)
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
   const [reference, setReference] = useState<string>('')
+  const [currencyCode, setCurrencyCode] = useState<string>('BOB')
+  const [receivedAmount, setReceivedAmount] = useState<number>(currentBalance > 0 ? currentBalance : 0)
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -56,9 +59,11 @@ export function PaymentModal({
         amount,
         method,
         reference: reference.trim() || null,
+        currencyCode,
+        receivedAmount,
       })
 
-      onSuccess(`¡Pago de ${amount} BOB registrado exitosamente!`)
+      onSuccess(`¡Pago de ${receivedAmount} ${currencyCode} registrado exitosamente!`)
       onClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al registrar el pago'
@@ -124,7 +129,7 @@ export function PaymentModal({
 
         {/* Amount to pay */}
         <div style={{ marginBottom: '12px' }}>
-          <label>Monto a pagar (BOB) *</label>
+          <label>Monto a pagar aplicado a folio (BOB) *</label>
           <input
             type="number"
             step="0.5"
@@ -134,6 +139,36 @@ export function PaymentModal({
             required
             disabled={!isShiftOpen}
           />
+        </div>
+
+        {/* Currency & Received Amount */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+          <div>
+            <label>Moneda recibida *</label>
+            <select
+              value={currencyCode}
+              onChange={(e) => setCurrencyCode(e.target.value)}
+              disabled={!isShiftOpen}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Monto recibido físico *</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              value={receivedAmount}
+              onChange={(e) => setReceivedAmount(Number(e.target.value))}
+              required
+              disabled={!isShiftOpen}
+            />
+          </div>
         </div>
 
         {/* Payment method */}

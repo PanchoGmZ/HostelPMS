@@ -25,6 +25,7 @@ import type { Folio } from '../../types/folios'
 import type { Stay } from '../../types/stays'
 import type { Guest } from '../../types/guests'
 import type { Room } from '../../types/rooms'
+import { CURRENCIES } from '../../utils/currencies'
 import './FoliosPage.css'
 
 
@@ -636,6 +637,8 @@ function ProcessPaymentModal({
   const [amount, setAmount] = useState<number>(folio.balance < 0 ? Math.abs(folio.balance) : 0)
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
   const [reference, setReference] = useState<string>('')
+  const [currencyCode, setCurrencyCode] = useState<string>('BOB')
+  const [receivedAmount, setReceivedAmount] = useState<number>(folio.balance < 0 ? Math.abs(folio.balance) : 0)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -663,6 +666,8 @@ function ProcessPaymentModal({
         amount,
         method,
         reference: reference.trim() || null,
+        currencyCode,
+        receivedAmount,
       })
       onSaved()
     } catch {
@@ -700,7 +705,7 @@ function ProcessPaymentModal({
         </div>
 
         <label>
-          Monto a pagar (BOB)
+          Monto a pagar aplicado a folio (BOB)
           <input
             type="number"
             min="0.5"
@@ -710,6 +715,33 @@ function ProcessPaymentModal({
             required
           />
         </label>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+          <label>
+            Moneda recibida
+            <select
+              value={currencyCode}
+              onChange={(e) => setCurrencyCode(e.target.value)}
+            >
+              {CURRENCIES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.code} — {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Monto recibido físico
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={receivedAmount}
+              onChange={(e) => setReceivedAmount(Number(e.target.value))}
+              required
+            />
+          </label>
+        </div>
 
         <label>
           Método de Pago

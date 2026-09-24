@@ -40,21 +40,38 @@ export async function addCashMovement(data: AddMovementPayload) {
 }
 
 export function calculateCashSummary(activeShift: CashShift | undefined) {
-  if (!activeShift) return { cashIn: 0, cashOut: 0, expectedTotal: 0 }
+  if (!activeShift) return { cashIn: 0, cashOut: 0, expectedTotal: 0, byCurrency: {} }
   let cashIn = 0
   let cashOut = 0
 
+  const byCurrency: Record<string, { in: number; out: number; expected: number }> = {}
+
   activeShift.movements?.forEach((m) => {
     if (m.method === 'cash' || !m.method) {
-      if (m.type === 'in' || m.type === 'pago_folio') {
+      const cur = m.currencyCode || 'BOB'
+      const amount = m.receivedAmount ?? m.amount ?? 0
+
+      if (!byCurrency[cur]) byCurrency[cur] = { in: 0, out: 0, expected: 0 }
+
+      if (m.type === 'in' || m.type === 'payment' || m.type === 'pago_folio') {
         cashIn += m.amount ?? 0
+        byCurrency[cur].in += amount
       } else if (m.type === 'out') {
         cashOut += m.amount ?? 0
+        byCurrency[cur].out += amount
       }
     }
   })
 
+  if (!byCurrency['BOB']) byCurrency['BOB'] = { in: 0, out: 0, expected: 0 }
+  
+  Object.keys(byCurrency).forEach(cur => {
+    let opening = 0;
+    if (cur === 'BOB') opening = activeShift.openingAmount ?? 0;
+    byCurrency[cur].expected = opening + byCurrency[cur].in - byCurrency[cur].out;
+  })
+
   const expectedTotal = (activeShift.openingAmount ?? 0) + cashIn - cashOut
-  return { cashIn, cashOut, expectedTotal }
+  return { cashIn, cashOut, expectedTotal, byCurrency }
 }
 

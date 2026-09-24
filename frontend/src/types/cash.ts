@@ -8,6 +8,8 @@ export interface CashMovement {
   description?: string
   relatedFolioId?: string | null
   createdBy: string
+  currencyCode?: string
+  receivedAmount?: number
   createdAt: { seconds: number }
 }
 
@@ -48,6 +50,8 @@ export interface AddMovementPayload {
   type: 'in' | 'out'
   amount: number
   method: 'cash' | 'card' | 'transfer' | 'qr'
+  currencyCode?: string
+  receivedAmount?: number
   description: string
 }
 

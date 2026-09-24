@@ -87,6 +87,8 @@ export async function processDailySummaryForEstablishment(
 
   // 5. Ingresos (pagos completados) registrados en folios durante el día
   let totalRevenue = 0;
+  const revenueByCurrency: Record<string, number> = {};
+
   for (const folioDoc of foliosSnap.docs) {
     const folio = folioDoc.data();
     const payments = Array.isArray(folio.payments) ? folio.payments : [];
@@ -95,6 +97,12 @@ export async function processDailySummaryForEstablishment(
         const pDate = p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt.seconds * 1000);
         if (pDate >= startOfDay && pDate <= endOfDay) {
           totalRevenue += p.amount; // Los refunds tienen amount negativo, así que se restan automáticamente
+          
+          const cur = p.currencyCode || 'BOB';
+          const receivedAmt = typeof p.receivedAmount === 'number' ? p.receivedAmount : p.amount;
+          
+          if (!revenueByCurrency[cur]) revenueByCurrency[cur] = 0;
+          revenueByCurrency[cur] += receivedAmt;
         }
       }
     }
@@ -131,6 +139,7 @@ export async function processDailySummaryForEstablishment(
       checkIns: checkInsCount,
       checkOuts: checkOutsCount,
       revenue: Math.round(totalRevenue * 100) / 100,
+      revenueByCurrency,
       occupancy,
       totalBeds,
       occupiedBeds: occupiedBedsCount,

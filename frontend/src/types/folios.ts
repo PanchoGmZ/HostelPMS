@@ -15,6 +15,8 @@ export interface Payment {
   method: string
   status: string
   reference?: string | null
+  currencyCode?: string
+  receivedAmount?: number
   createdAt: { seconds: number }
 }
 
@@ -39,6 +41,8 @@ export interface AddConsumptionPayload {
   payNow?: {
     method: 'cash' | 'card' | 'transfer' | 'qr'
     reference?: string
+    currencyCode?: string
+    receivedAmount?: number
   }
 }
 
@@ -50,6 +54,8 @@ export interface RecordPaymentPayload {
   amount: number
   method: string
   reference?: string | null
+  currencyCode?: string
+  receivedAmount?: number
 }
 
 export type ProcessPaymentPayload = RecordPaymentPayload

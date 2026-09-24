@@ -23,6 +23,7 @@ export interface CreateReservationPayload {
   // v1.7: pricing mode
   pricingMode?: 'standard' | 'manual';
   manualPricePerNight?: number;
+  manualTotalAmount?: number; // v1.9: total manual
   specialRateReason?: string;
 }
 
@@ -68,6 +69,7 @@ export async function createReservationService(
     guestIds,
     pricingMode = 'standard',
     manualPricePerNight,
+    manualTotalAmount,
     specialRateReason,
   } = payload;
   const requestedCheckIn = payload.checkIn ?? payload.checkInDate;
@@ -93,10 +95,18 @@ export async function createReservationService(
     throw new ReservationError('bedIds debe contener identificadores únicos y válidos.');
   }
 
-  // v1.7: validar tarifa manual
+  // v1.7/v1.9: validar tarifa manual
   if (pricingMode === 'manual') {
-    if (manualPricePerNight === null || manualPricePerNight === undefined || typeof manualPricePerNight !== 'number' || !isFinite(manualPricePerNight) || manualPricePerNight < 0) {
-      throw new ReservationError('Precio manual inválido. Debe ser un número >= 0.');
+    if (manualTotalAmount !== undefined) {
+      if (typeof manualTotalAmount !== 'number' || !isFinite(manualTotalAmount) || manualTotalAmount < 0) {
+        throw new ReservationError('Precio total manual inválido. Debe ser un número >= 0.');
+      }
+    } else if (manualPricePerNight !== undefined) {
+      if (typeof manualPricePerNight !== 'number' || !isFinite(manualPricePerNight) || manualPricePerNight < 0) {
+        throw new ReservationError('Precio manual por noche inválido. Debe ser un número >= 0.');
+      }
+    } else {
+      throw new ReservationError('Precio manual requerido.');
     }
     if (!specialRateReason || typeof specialRateReason !== 'string' || specialRateReason.trim() === '') {
       throw new ReservationError('Se requiere un motivo para la tarifa especial.');
@@ -262,15 +272,19 @@ export async function createReservationService(
         let basePrice = 0;
 
         if (pricingMode === 'manual') {
+          // v1.9: usar manualTotalAmount si está presente
+          let effManualPricePerNight = manualPricePerNight as number;
+          if (typeof manualTotalAmount === 'number') {
+             const totalChargeableUnits = saleMode === 'full_room' ? expectedDates.length : (expectedDates.length * bedIds.length);
+             effManualPricePerNight = totalChargeableUnits > 0 ? manualTotalAmount / totalChargeableUnits : 0;
+          }
+
           // v1.7: tarifa especial — usar precio manual como base
           // Solo la primera cama lleva el precio en full_room, el resto = 0
           if (saleMode === 'full_room') {
-            basePrice = bedId === bedIds[0]
-              // manualPricePerNight ya fue validado > = 0 arriba
-              ? (manualPricePerNight as number)
-              : 0;
+            basePrice = bedId === bedIds[0] ? effManualPricePerNight : 0;
           } else {
-            basePrice = manualPricePerNight as number;
+            basePrice = effManualPricePerNight;
           }
         } else if (saleMode === 'full_room' && room.type === 'private') {
           // For private rooms, we assign the full price to the first bed
@@ -393,6 +407,7 @@ export async function createReservationService(
         pricingMode,
         // manualPricePerNight: guardar null si es standard, número si es manual
         manualPricePerNight: pricingMode === 'manual' && typeof manualPricePerNight === 'number' ? manualPricePerNight : null,
+        manualTotalAmount: pricingMode === 'manual' && typeof manualTotalAmount === 'number' ? manualTotalAmount : null,
         // specialRateReason: guardar null si no aplica
         specialRateReason: pricingMode === 'manual' && specialRateReason ? specialRateReason.trim() : null,
         createdBy: callerUid,

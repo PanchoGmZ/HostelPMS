@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  AlertTriangle,
   BedDouble,
-  Building,
   CalendarDays,
   CheckCircle2,
   CreditCard,
   Filter,
-  Info,
   Plus,
   Search,
   User,
@@ -20,39 +17,15 @@ import {
 import { useAuth } from '../../context/useAuth'
 import { listRooms } from '../../services/rooms/roomsService'
 import { searchGuests } from '../../services/guests/guestsService'
-import { cancelReservation, createReservation, listReservations } from '../../services/reservations/reservationsService'
+import { cancelReservation, listReservations } from '../../services/reservations/reservationsService'
+import { NewReservationModal } from '../../components/reception/NewReservationModal'
 import { ModifyReservationModal } from '../../components/reception/ModifyReservationModal'
-import { createReservationSchema } from '../../schemas/reservationsSchema'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 import type { Reservation, ReservationStatus } from '../../types/reservations'
 import './ReservationsPage.css'
 
-function toLocalDateString(date: Date): string {
-  const yyyy = date.getFullYear()
-  const mm = String(date.getMonth() + 1).padStart(2, '0')
-  const dd = String(date.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
 
-function getTodayString(): string {
-  return toLocalDateString(new Date())
-}
-
-function getTomorrowString(fromDateStr?: string): string {
-  const base = fromDateStr ? new Date(`${fromDateStr}T00:00:00`) : new Date()
-  base.setDate(base.getDate() + 1)
-  return toLocalDateString(base)
-}
-
-function calculateNights(checkIn: string, checkOut: string): number {
-  if (!checkIn || !checkOut) return 0
-  const d1 = new Date(`${checkIn}T00:00:00`)
-  const d2 = new Date(`${checkOut}T00:00:00`)
-  const diffTime = d2.getTime() - d1.getTime()
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24))
-  return diffDays > 0 ? diffDays : 0
-}
 
 function formatDateDisplay(timestamp?: { seconds: number } | null): string {
   if (!timestamp || !timestamp.seconds) return '-'
@@ -137,7 +110,7 @@ export function ReservationsPage() {
         establishmentId,
         reservationId: cancelingReservation.id,
       })
-      setSuccessMessage('Reserva cancelada exitosamente.')
+      setSuccessMessage('Reserva eliminada exitosamente.')
       setCancelingReservation(null)
       void load()
     } catch (err: unknown) {
@@ -307,7 +280,7 @@ export function ReservationsPage() {
                           Modificar
                         </button>
                       )}
-                    {reservation.status !== 'cancelled' ? (
+                    {reservation.status === 'confirmed' && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -317,9 +290,9 @@ export function ReservationsPage() {
                           className="danger-button compact-button"
                           style={{ padding: '4px 10px', fontSize: '12px', minHeight: 'auto' }}
                         >
-                          Cancelar
+                          Eliminar reserva
                         </button>
-                      ) : null}
+                      )}
                     </div>
                     <div className="res-amount">
                       {reservation.totalAmount ?? 0} {reservation.currency ?? 'BOB'}
@@ -334,14 +307,14 @@ export function ReservationsPage() {
 
       {/* Modal Nueva Reserva */}
       {editor && (
-        <ReservationModal
+        <NewReservationModal
           establishmentId={establishmentId}
           rooms={rooms}
           guests={guests}
           onClose={() => setEditor(false)}
-          onSaved={() => {
+          onSuccess={(msg) => {
             setEditor(false)
-            setSuccessMessage('Reserva creada y confirmada exitosamente.')
+            setSuccessMessage(msg)
             void load()
           }}
           onError={(msg) => setError(msg)}
@@ -355,18 +328,16 @@ export function ReservationsPage() {
             <div className="modal-header">
               <div>
                 <span className="kicker" style={{ color: 'var(--coral)' }}>Acción crítica</span>
-                <h2>Cancelar reserva</h2>
+                <h2>¿Eliminar esta reserva?</h2>
               </div>
               <button type="button" onClick={() => setCancelingReservation(null)}>
                 <X size={19} />
               </button>
             </div>
             <p style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: '1.5' }}>
-              ¿Estás seguro de que deseas cancelar la reserva de{' '}
-              <strong>
-                {guests.find((g) => g.id === cancelingReservation.primaryGuestId)?.firstName ?? 'este huésped'}
-              </strong>
-              ? Esta acción no se puede deshacer.
+              Esta acción liberará la disponibilidad reservada. La reserva dejará de aparecer como activa.
+              <br /><br />
+              ¿Seguro que deseas continuar?
             </p>
             <div className="modal-actions" style={{ marginTop: '16px' }}>
               <button
@@ -384,7 +355,7 @@ export function ReservationsPage() {
                 onClick={confirmCancel}
                 disabled={canceling}
               >
-                {canceling ? 'Cancelando...' : 'Sí, cancelar reserva'}
+                {canceling ? 'Eliminando...' : 'Eliminar reserva'}
               </button>
             </div>
           </div>
@@ -786,7 +757,7 @@ function ReservationDetailsModal({
                 onCancelRequest?.(reservation)
               }}
             >
-              Cancelar reserva
+              Eliminar reserva
             </button>
           )}
           {/* v1.7: botón Modificar Reserva en modal de detalles */}
@@ -812,614 +783,4 @@ function ReservationDetailsModal({
   )
 }
 
-interface ReservationModalProps {
-  establishmentId: string
-  rooms: Room[]
-  guests: Guest[]
-  onClose: () => void
-  onSaved: () => void
-  onError: (message: string) => void
-}
 
-function ReservationModal({
-  establishmentId,
-  rooms,
-  guests,
-  onClose,
-  onSaved,
-  onError,
-}: ReservationModalProps) {
-  const todayStr = getTodayString()
-  const tomorrowStr = getTomorrowString(todayStr)
-
-  const [guestId, setGuestId] = useState(guests[0]?.id ?? '')
-  const [guestSearch, setGuestSearch] = useState('')
-  const [roomId, setRoomId] = useState(rooms[0]?.id ?? '')
-  const [saleMode, setSaleMode] = useState<'bed' | 'full_room'>('bed')
-  const [checkIn, setCheckIn] = useState(todayStr)
-  const [checkOut, setCheckOut] = useState(tomorrowStr)
-  const [beds, setBeds] = useState<string[]>([])
-  const [channel, setChannel] = useState('reception')
-  const [commissionPercent, setCommissionPercent] = useState<number | ''>('')
-  const [guestCount, setGuestCount] = useState<number>(1)
-  const [guestIds, setGuestIds] = useState<string[]>([])
-  // v1.7: pricingMode + tarifa especial
-  const [pricingMode, setPricingMode] = useState<'standard' | 'manual'>('standard')
-  const [manualPricePerNight, setManualPricePerNight] = useState<number>(0)
-  const [specialRateReason, setSpecialRateReason] = useState('Voluntariado')
-  const [specialRateNote, setSpecialRateNote] = useState('')
-
-  const [formError, setFormError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-
-  const room = rooms.find((item) => item.id === roomId)
-  const eligibleBeds = useMemo(() => {
-    return room?.beds.filter((bed) => bed.status === 'active' && bed.isAvailable !== false) ?? []
-  }, [room])
-
-  const filteredGuests = useMemo(() => {
-    if (!guestSearch.trim()) return guests
-    const q = guestSearch.toLowerCase()
-    return guests.filter(
-      (g) =>
-        `${g.firstName} ${g.lastName}`.toLowerCase().includes(q) ||
-        g.documentNumber.toLowerCase().includes(q)
-    )
-  }, [guests, guestSearch])
-
-  // Automatic full room bed selection
-  useEffect(() => {
-    if (room?.type === 'private') {
-      setSaleMode('full_room')
-    }
-    if (saleMode === 'full_room' && room) {
-      const allActiveBedIds = room.beds.filter((b) => b.status === 'active').map((b) => b.id)
-      setBeds(allActiveBedIds)
-    }
-  }, [saleMode, room])
-
-  // Minimum check-out date is checkIn + 1 day
-  const minCheckOut = useMemo(() => getTomorrowString(checkIn), [checkIn])
-
-  const handleCheckInChange = (newIn: string) => {
-    setCheckIn(newIn)
-    if (new Date(`${checkOut}T00:00:00`) <= new Date(`${newIn}T00:00:00`)) {
-      setCheckOut(getTomorrowString(newIn))
-    }
-  }
-
-  // Price calculations for preview
-  const nights = useMemo(() => calculateNights(checkIn, checkOut), [checkIn, checkOut])
-
-  const estimatedTotal = useMemo(() => {
-    if (nights <= 0 || !room) return 0
-    if (saleMode === 'full_room') {
-      if (room.type === 'private') {
-        const base = room.priceByGuestCount?.[String(guestCount)] ?? room.basePriceRoom ?? 0
-        return base * nights
-      }
-      return (room.basePriceRoom ?? 0) * nights
-    }
-    const selectedBeds = room.beds.filter((b) => beds.includes(b.id))
-    const pricePerNightSum = selectedBeds.reduce((sum, b) => sum + (b.basePriceBed ?? room.basePriceRoom ?? 0), 0)
-    return pricePerNightSum * nights
-  }, [nights, room, saleMode, beds, guestCount])
-
-  const toggleBed = (bedId: string) => {
-    if (saleMode === 'full_room') return
-    setBeds((prev) => (prev.includes(bedId) ? prev.filter((id) => id !== bedId) : [...prev, bedId]))
-  }
-
-  const selectAllBeds = () => {
-    setBeds(eligibleBeds.map((b) => b.id))
-  }
-
-  const deselectAllBeds = () => {
-    setBeds([])
-  }
-
-  const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setFormError(null)
-
-    if (!room) {
-      setFormError('Selecciona una habitación válida.')
-      return
-    }
-
-    if (!guestId) {
-      setFormError('Debes seleccionar un huésped. Si no hay huéspedes registrados, primero créalo en el módulo de huéspedes.')
-      return
-    }
-
-    if (beds.length === 0) {
-      setFormError('Debes seleccionar al menos una cama.')
-      return
-    }
-
-    const validation = createReservationSchema.safeParse({
-      guestId,
-      roomId,
-      saleMode,
-      bedIds: beds,
-      checkIn,
-      checkOut,
-      channel,
-      commissionPercent: commissionPercent === '' ? undefined : commissionPercent,
-      guestCount,
-      guestIds: guestIds.filter(id => id.trim() !== ''),
-    })
-
-    if (!validation.success) {
-      setFormError(validation.error.issues[0]?.message ?? 'Datos de reserva no válidos.')
-      return
-    }
-
-    // Build pricePerNight date matrix
-    const dates: string[] = []
-    for (
-      let date = new Date(`${checkIn}T00:00:00Z`);
-      date < new Date(`${checkOut}T00:00:00Z`);
-      date.setUTCDate(date.getUTCDate() + 1)
-    ) {
-      dates.push(date.toISOString().slice(0, 10))
-    }
-
-    const commRate = (channel === 'booking' || channel === 'airbnb') && commissionPercent !== '' 
-      ? Number(commissionPercent) / 100 
-      : 0
-
-    const pricePerNight = Object.fromEntries(
-      beds.map((bedId) => [
-        bedId,
-        Object.fromEntries(
-          dates.map((date) => {
-            let basePrice = 0;
-            if (saleMode === 'full_room' && room.type === 'private') {
-              basePrice = room.priceByGuestCount?.[String(guestCount)] ?? room.basePriceRoom ?? 0
-            } else {
-              basePrice = room.beds.find((b) => b.id === bedId)?.basePriceBed ?? room.basePriceRoom ?? 0
-            }
-            return [date, basePrice * (1 + commRate)]
-          })
-        ),
-      ])
-    )
-
-    // v1.7: validar precio manual
-    const effectiveReason = specialRateReason === 'Otro' ? (specialRateNote.trim() || 'Otro') : specialRateReason
-    if (pricingMode === 'manual') {
-      if (typeof manualPricePerNight !== 'number' || manualPricePerNight < 0 || !isFinite(manualPricePerNight)) {
-        setFormError('El precio manual debe ser un número mayor o igual a 0.')
-        return
-      }
-      if (!effectiveReason.trim()) {
-        setFormError('Ingresa un motivo para la tarifa especial.')
-        return
-      }
-    }
-
-    setSubmitting(true)
-    try {
-      await createReservation({
-        establishmentId,
-        guestId,
-        saleMode,
-        roomId,
-        bedIds: beds,
-        checkIn,
-        checkOut,
-        pricePerNight,
-        channel,
-        // v1.7: guestCount siempre número
-        guestCount: saleMode === 'bed' ? 1 : guestCount,
-        guestIds,
-        ...(commissionPercent !== '' ? { commissionPercent } : {}),
-        // v1.7: pricingMode
-        pricingMode,
-        ...(pricingMode === 'manual' ? {
-          manualPricePerNight,
-          specialRateReason: effectiveReason,
-        } : {}),
-      })
-      onSaved()
-    } catch {
-      const err = 'La reserva no pudo confirmarse. El backend server-side verificó que la cama o fecha ya no está disponible.'
-      setFormError(err)
-      onError(err)
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="modal-backdrop">
-      <form className="modal-form" style={{ maxWidth: '520px', width: '90%' }} onSubmit={submit}>
-        <div className="modal-header">
-          <div>
-            <span className="kicker">Recepción</span>
-            <h2>Nueva reserva</h2>
-          </div>
-          <button type="button" onClick={onClose}>
-            <X size={19} />
-          </button>
-        </div>
-
-        {formError && (
-          <div className="form-error" style={{ margin: '0 0 10px' }}>
-            <AlertTriangle size={15} style={{ display: 'inline', marginRight: '6px' }} />
-            {formError}
-          </div>
-        )}
-
-        {/* Huésped */}
-        <div style={{ display: 'grid', gap: '6px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span>Huésped titular</span>
-            {guests.length > 5 && (
-              <input
-                type="text"
-                placeholder="Filtrar por nombre o doc..."
-                value={guestSearch}
-                onChange={(e) => setGuestSearch(e.target.value)}
-                style={{ width: '180px', padding: '4px 8px', fontSize: '11px' }}
-              />
-            )}
-          </label>
-          {guests.length === 0 ? (
-            <div className="stay-notice" style={{ background: '#fff0eb', borderColor: '#f0b4a4', color: '#a94635' }}>
-              <User size={16} />
-              No hay huéspedes registrados en el sistema. Debes crear un huésped primero.
-            </div>
-          ) : (
-            <select value={guestId} onChange={(event) => setGuestId(event.target.value)} required>
-              {filteredGuests.length === 0 ? (
-                <option value="">No hay huéspedes que coincidan con la búsqueda</option>
-              ) : (
-                filteredGuests.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.firstName} {g.lastName} {g.documentNumber ? `(Doc: ${g.documentNumber})` : ''}
-                  </option>
-                ))
-              )}
-            </select>
-          )}
-        </div>
-
-        {room?.type === 'private' && (
-          <div style={{ display: 'grid', gap: '6px', background: 'var(--paper)', padding: 12, borderRadius: 8, border: '1px solid var(--line)' }}>
-            <h4 style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--text)' }}>Grupo (Habitación Privada)</h4>
-            
-            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span>Cantidad de ocupantes ({room.maxGuests ? `Máx ${room.maxGuests}` : 'Sin límite'})</span>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <button
-                  type="button"
-                  className="secondary-button compact-button"
-                  onClick={() => setGuestCount((c) => Math.max(1, c - 1))}
-                  style={{ padding: '4px 8px' }}
-                >
-                  -
-                </button>
-                <span style={{ minWidth: '24px', textAlign: 'center', fontWeight: 600 }}>{guestCount}</span>
-                <button
-                  type="button"
-                  className="secondary-button compact-button"
-                  onClick={() => setGuestCount((c) => Math.min(room.maxGuests || 99, c + 1))}
-                  style={{ padding: '4px 8px' }}
-                >
-                  +
-                </button>
-              </div>
-            </label>
-
-            <span className="text-muted" style={{ fontSize: 11, marginBottom: 4 }}>Acompañantes registrados (opcional):</span>
-            {guestIds.map((companionId, idx) => {
-              return (
-                <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
-                  <select
-                    value={companionId}
-                    onChange={(e) => {
-                      const newIds = [...guestIds]
-                      newIds[idx] = e.target.value
-                      setGuestIds(newIds)
-                    }}
-                    style={{ flex: 1, margin: 0, fontSize: 12, padding: '4px 8px' }}
-                  >
-                    <option value="">Selecciona un huésped...</option>
-                    {filteredGuests.map((g) => (
-                      <option key={g.id} value={g.id} disabled={g.id === guestId || guestIds.includes(g.id)}>
-                        {g.firstName} {g.lastName}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newIds = [...guestIds]
-                      newIds.splice(idx, 1)
-                      setGuestIds(newIds)
-                    }}
-                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: 4 }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              )
-            })}
-            
-            {guestIds.length < guestCount - 1 && (
-              <button
-                type="button"
-                className="secondary-button compact-button"
-                onClick={() => setGuestIds([...guestIds, ''])}
-                style={{ alignSelf: 'flex-start', marginTop: 4 }}
-              >
-                + Añadir acompañante
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Modo de venta */}
-        {room?.type !== 'private' && (
-        <div style={{ display: 'grid', gap: '6px' }}>
-          <label>Modo de venta</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-            <button
-              type="button"
-              className={saleMode === 'bed' ? 'primary-button compact-button' : 'secondary-button'}
-              onClick={() => {
-                setSaleMode('bed')
-                setBeds([])
-              }}
-              style={{ justifyContent: 'center' }}
-            >
-              <BedDouble size={16} /> Reserva por cama
-            </button>
-            <button
-              type="button"
-              className={saleMode === 'full_room' ? 'primary-button compact-button' : 'secondary-button'}
-              onClick={() => setSaleMode('full_room')}
-              style={{ justifyContent: 'center' }}
-            >
-              <Building size={16} /> Habitación completa
-            </button>
-          </div>
-        </div>
-        )}
-
-        {/* Habitación */}
-        <label>
-          Habitación
-          <select
-            value={roomId}
-            onChange={(event) => {
-              setRoomId(event.target.value)
-              setBeds([])
-              setGuestCount(1)
-              setGuestIds([])
-            }}
-          >
-            {rooms.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name} ({item.type === 'dorm' ? 'Compartida/Dorm' : 'Privada'}) · {item.bedCount} camas
-              </option>
-            ))}
-          </select>
-        </label>
-
-        {/* Fechas */}
-        <div className="form-row">
-          <label>
-            Entrada
-            <input
-              type="date"
-              min={todayStr}
-              value={checkIn}
-              onChange={(event) => handleCheckInChange(event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            Salida (Mínimo 1 noche)
-            <input
-              type="date"
-              min={minCheckOut}
-              value={checkOut}
-              onChange={(event) => setCheckOut(event.target.value)}
-              required
-            />
-          </label>
-        </div>
-
-        {/* Canal */}
-        <label>
-          Canal de reserva
-          <select value={channel} onChange={(event) => {
-            setChannel(event.target.value)
-            if (event.target.value !== 'booking' && event.target.value !== 'airbnb') {
-              setCommissionPercent('')
-            }
-          }}>
-            <option value="reception">Recepción</option>
-            <option value="whatsapp">WhatsApp</option>
-            <option value="booking">Booking</option>
-            <option value="airbnb">Airbnb</option>
-            <option value="direct">Directo</option>
-          </select>
-        </label>
-
-        {(channel === 'booking' || channel === 'airbnb') && (
-          <label>
-            Comisión de la plataforma (%)
-            <input
-              type="number"
-              min={0}
-              max={100}
-              step={0.5}
-              value={commissionPercent}
-              onChange={(e) => setCommissionPercent(e.target.value === '' ? '' : Number(e.target.value))}
-              placeholder="Ej. 15"
-              required
-            />
-          </label>
-        )}
-
-        {/* Selección de Camas */}
-        {room?.type !== 'private' && (
-        <div className="bed-choice" style={{ display: 'grid', gap: '8px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span className="eyebrow">
-              Camas de la habitación {saleMode === 'full_room' ? '(Todas seleccionadas)' : ''}
-            </span>
-            {saleMode === 'bed' && eligibleBeds.length > 0 && (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  type="button"
-                  onClick={selectAllBeds}
-                  style={{ background: 'none', border: 'none', color: 'var(--teal)', fontSize: '11px', cursor: 'pointer' }}
-                >
-                  Todas
-                </button>
-                <button
-                  type="button"
-                  onClick={deselectAllBeds}
-                  style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '11px', cursor: 'pointer' }}
-                >
-                  Ninguna
-                </button>
-              </div>
-            )}
-          </div>
-
-          {eligibleBeds.length === 0 ? (
-            <div style={{ fontSize: '12px', color: 'var(--muted)', padding: '8px', background: 'var(--paper)', borderRadius: '5px' }}>
-              No hay camas activas disponibles en esta habitación.
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: '6px', maxHeight: '140px', overflowY: 'auto' }}>
-              {eligibleBeds.map((bed) => (
-                <label key={bed.id} className="bed-check" style={{ cursor: saleMode === 'full_room' ? 'default' : 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    disabled={saleMode === 'full_room'}
-                    checked={beds.includes(bed.id)}
-                    onChange={() => toggleBed(bed.id)}
-                  />
-                  {bed.label} · {bed.basePriceBed ?? room?.basePriceRoom} BOB / noche
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* v1.7: Selector de Tarifa */}
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block', fontSize: '13px' }}>Tarifa</label>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-              padding: '7px 12px', borderRadius: 'var(--radius-sm)', flex: 1, justifyContent: 'center',
-              border: `2px solid ${pricingMode === 'standard' ? 'var(--teal)' : 'var(--line)'}`,
-              background: pricingMode === 'standard' ? 'var(--mint)' : 'transparent',
-              fontWeight: pricingMode === 'standard' ? 600 : 400, fontSize: '13px',
-            }}>
-              <input type="radio" name="resPricingMode" value="standard" checked={pricingMode === 'standard'} onChange={() => setPricingMode('standard')} style={{ display: 'none' }} />
-              Tarifa normal
-            </label>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-              padding: '7px 12px', borderRadius: 'var(--radius-sm)', flex: 1, justifyContent: 'center',
-              border: `2px solid ${pricingMode === 'manual' ? 'var(--coral)' : 'var(--line)'}`,
-              background: pricingMode === 'manual' ? '#fff0eb' : 'transparent',
-              fontWeight: pricingMode === 'manual' ? 600 : 400, fontSize: '13px',
-            }}>
-              <input type="radio" name="resPricingMode" value="manual" checked={pricingMode === 'manual'} onChange={() => setPricingMode('manual')} style={{ display: 'none' }} />
-              Tarifa especial
-            </label>
-          </div>
-          {pricingMode === 'manual' && (
-            <div style={{ padding: '10px 12px', background: '#fff8f5', borderRadius: 'var(--radius-sm)', border: '1px solid #f9d5c5' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: specialRateReason === 'Otro' ? '8px' : '0' }}>
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Precio por noche (BOB)
-                  <input type="number" min={0} step={0.5} value={manualPricePerNight}
-                    onChange={(e) => setManualPricePerNight(Number(e.target.value))} placeholder="0"
-                    style={{ marginTop: '4px', borderColor: 'var(--coral)' }} />
-                </label>
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Motivo
-                  <select value={specialRateReason} onChange={(e) => setSpecialRateReason(e.target.value)} style={{ marginTop: '4px' }}>
-                    <option>Voluntariado</option>
-                    <option>Cortesía</option>
-                    <option>Acuerdo especial</option>
-                    <option>Otro</option>
-                  </select>
-                </label>
-              </div>
-              {specialRateReason === 'Otro' && (
-                <label style={{ fontSize: '12px', fontWeight: 600 }}>Nota adicional
-                  <input type="text" value={specialRateNote} onChange={(e) => setSpecialRateNote(e.target.value)} placeholder="Describir brevemente..." maxLength={100} style={{ marginTop: '4px' }} />
-                </label>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* Resumen de Tarifas & Total Estimado */}
-        <div
-          style={{
-            padding: '12px 14px',
-            background: '#f4f8f6',
-            border: '1px solid #cce3d8',
-            borderRadius: '6px',
-            fontSize: '13px',
-            display: 'grid',
-            gap: '4px',
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600 }}>
-            <span>Noches: {nights}</span>
-            <span>{room?.type === 'private' ? `Ocupantes: ${guestCount}` : `Camas: ${beds.length}`}</span>
-          </div>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-            <span style={{ color: 'var(--muted)' }}>Precio base hospedaje:</span>
-            <span>{estimatedTotal} BOB</span>
-          </div>
-          
-          {(channel === 'booking' || channel === 'airbnb') && commissionPercent !== '' && (
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--muted)' }}>Markup {channel === 'booking' ? 'Booking' : 'Airbnb'} ({commissionPercent}%):</span>
-              <span style={{ color: '#d97706' }}>
-                {(estimatedTotal * (Number(commissionPercent) / 100)).toFixed(1)} BOB
-              </span>
-            </div>
-          )}
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid #cce3d8' }}>
-            <strong>Precio total estimado:</strong>
-            <strong style={{ color: 'var(--teal)' }}>
-              {((channel === 'booking' || channel === 'airbnb') && commissionPercent !== '' 
-                ? estimatedTotal * (1 + Number(commissionPercent) / 100) 
-                : estimatedTotal).toFixed(1)} BOB
-            </strong>
-          </div>
-          <div style={{ fontSize: '10px', color: 'var(--muted)', marginTop: '2px', display: 'flex', alignItems: 'flex-start', gap: '4px' }}>
-            <Info size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <span>Este es el monto final de la reserva que incluye el cargo de la plataforma. La tarifa por noche se ajustará automáticamente al guardar.</span>
-          </div>
-        </div>
-
-        <div className="modal-actions">
-          <button className="secondary-button" type="button" onClick={onClose} disabled={submitting}>
-            Cancelar
-          </button>
-          <button className="primary-button" type="submit" disabled={submitting || guests.length === 0}>
-            {submitting ? 'Confirmando con backend...' : 'Confirmar reserva'}
-          </button>
-        </div>
-      </form>
-    </div>
-  )
-}

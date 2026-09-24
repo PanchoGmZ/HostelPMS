@@ -15,6 +15,7 @@ export interface ModifyReservationPayload {
   guestCount?: number;
   pricingMode?: 'standard' | 'manual';
   manualPricePerNight?: number;
+  manualTotalAmount?: number;
   specialRateReason?: string;
 }
 
@@ -41,6 +42,7 @@ export async function modifyReservationService(
     guestCount,
     pricingMode,
     manualPricePerNight,
+    manualTotalAmount,
     specialRateReason,
   } = payload;
 
@@ -52,13 +54,22 @@ export async function modifyReservationService(
     throw new ReservationError('No tienes permisos.', 403);
   }
 
-  // v1.7: validar precio manual si aplica
+  // v1.7/v1.9: validar precio manual si aplica
   const effectivePricingMode = pricingMode;
   if (effectivePricingMode === 'manual') {
-    if (manualPricePerNight === null || manualPricePerNight === undefined || typeof manualPricePerNight !== 'number' || !isFinite(manualPricePerNight) || manualPricePerNight < 0) {
-      throw new ReservationError('Precio manual inválido. Debe ser un número >= 0.', 400);
+    if (manualTotalAmount !== undefined) {
+      if (typeof manualTotalAmount !== 'number' || !isFinite(manualTotalAmount) || manualTotalAmount < 0) {
+        throw new ReservationError('Precio total manual inválido. Debe ser un número >= 0.', 400);
+      }
+    } else if (manualPricePerNight !== undefined) {
+      if (typeof manualPricePerNight !== 'number' || !isFinite(manualPricePerNight) || manualPricePerNight < 0) {
+        throw new ReservationError('Precio manual por noche inválido. Debe ser un número >= 0.', 400);
+      }
+    } else if (pricingMode !== undefined) {
+      // If pricingMode is updated to manual, but no price provided
+      throw new ReservationError('Precio manual requerido.', 400);
     }
-    if (!specialRateReason || typeof specialRateReason !== 'string' || specialRateReason.trim() === '') {
+    if (specialRateReason !== undefined && (!specialRateReason || typeof specialRateReason !== 'string' || specialRateReason.trim() === '')) {
       throw new ReservationError('Se requiere un motivo para la tarifa especial.', 400);
     }
   }
@@ -72,7 +83,8 @@ export async function modifyReservationService(
     commissionPercent !== undefined ||
     guestCount !== undefined ||
     pricingMode !== undefined ||
-    manualPricePerNight !== undefined;
+    manualPricePerNight !== undefined ||
+    manualTotalAmount !== undefined;
 
   let newTotalAmount: number | undefined;
 
@@ -144,12 +156,23 @@ export async function modifyReservationService(
         // Calcular precio base según pricingMode
         let basePrice = 0;
         if (finalPricingMode === 'manual') {
-          // v1.7: precio manual congelado — comprobación explícita de null/undefined
-          const mPrice = manualPricePerNight !== undefined && manualPricePerNight !== null
+          // v1.9: manualTotalAmount
+          let mPrice = manualPricePerNight !== undefined && manualPricePerNight !== null
             ? manualPricePerNight
             : (reservation.manualPricePerNight !== undefined && reservation.manualPricePerNight !== null
               ? reservation.manualPricePerNight
               : 0);
+
+          if (manualTotalAmount !== undefined) {
+            // Calcular noches y camas para dividir
+            const calcNights = reservation.checkInDate && reservation.checkOutDate
+              ? Math.round((reservation.checkOutDate.seconds - reservation.checkInDate.seconds) / (60 * 60 * 24))
+              : 0;
+            const bIds: string[] = Array.isArray(reservation.bedIds) ? reservation.bedIds : [];
+            const totalChargeableUnits = saleMode === 'full_room' ? calcNights : (calcNights * bIds.length);
+            mPrice = totalChargeableUnits > 0 ? manualTotalAmount / totalChargeableUnits : 0;
+          }
+
           basePrice = mPrice;
         } else if (saleMode === 'full_room' && room.type === 'private') {
           const countStr = String(resolvedGuestCount);
@@ -185,10 +208,23 @@ export async function modifyReservationService(
         updates.guestCount = resolvedGuestCount;
         updates.commissionPercent = resolvedCommissionPercent;
         updates.pricingMode = finalPricingMode;
-        // v1.7: guardar siempre null en lugar de undefined para campos opcionales
-        updates.manualPricePerNight = finalPricingMode === 'manual' && (manualPricePerNight !== undefined && manualPricePerNight !== null)
-          ? manualPricePerNight
-          : (finalPricingMode === 'manual' && reservation.manualPricePerNight !== undefined ? reservation.manualPricePerNight : null);
+        // v1.7/v1.9: guardar siempre null en lugar de undefined para campos opcionales
+        const finalManualPricePerNight = finalPricingMode === 'manual' && manualTotalAmount !== undefined
+          ? (updates.totalAmount as number) / ((reservation.checkOutDate.seconds - reservation.checkInDate.seconds) / (60 * 60 * 24)) // Simplified because totalAmount factors everything
+          : (finalPricingMode === 'manual' && (manualPricePerNight !== undefined && manualPricePerNight !== null)
+            ? manualPricePerNight
+            : (finalPricingMode === 'manual' && reservation.manualPricePerNight !== undefined ? reservation.manualPricePerNight : null));
+            
+        updates.manualPricePerNight = finalManualPricePerNight;
+        
+        if (manualTotalAmount !== undefined) {
+           updates.manualTotalAmount = manualTotalAmount;
+        } else if (finalPricingMode === 'manual') {
+           updates.manualTotalAmount = reservation.manualTotalAmount ?? null;
+        } else {
+           updates.manualTotalAmount = null;
+        }
+        
         updates.specialRateReason = finalPricingMode === 'manual'
           ? (specialRateReason?.trim() ?? reservation.specialRateReason ?? null)
           : null;
@@ -197,6 +233,7 @@ export async function modifyReservationService(
         if (pricingMode !== undefined) {
           updates.pricingMode = pricingMode;
           updates.manualPricePerNight = pricingMode === 'manual' && typeof manualPricePerNight === 'number' ? manualPricePerNight : null;
+          updates.manualTotalAmount = pricingMode === 'manual' && typeof manualTotalAmount === 'number' ? manualTotalAmount : null;
           updates.specialRateReason = pricingMode === 'manual' && specialRateReason ? specialRateReason.trim() : null;
         }
       }

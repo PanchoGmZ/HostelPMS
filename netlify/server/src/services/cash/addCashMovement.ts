@@ -12,6 +12,8 @@ export interface AddCashMovementPayload {
   description?: string;
   notes?: string | null;
   method?: string;
+  currencyCode?: string;
+  receivedAmount?: number;
 }
 
 export interface AddCashMovementResult {
@@ -34,7 +36,7 @@ export async function addCashMovementService(
   getFirebaseAdmin();
   const db = getFirestore();
 
-  const { establishmentId, type, amount, reason, description, notes, method = 'cash' } = payload;
+  const { establishmentId, type, amount, reason, description, notes, method = 'cash', currencyCode, receivedAmount } = payload;
   const cashShiftId = payload.cashShiftId || payload.shiftId;
 
   if (!establishmentId || !cashShiftId) {
@@ -84,6 +86,8 @@ export async function addCashMovementService(
         type,
         amount,
         method: method || 'cash',
+        currencyCode: currencyCode || 'BOB',
+        receivedAmount: receivedAmount ?? amount,
         description: movementDescription,
         reason: movementDescription,
         notes: notes || null,

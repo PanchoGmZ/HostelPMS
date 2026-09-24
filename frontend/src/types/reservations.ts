@@ -35,6 +35,7 @@ export interface Reservation {
   // v1.7: pricing mode + tarifa especial
   pricingMode?: 'standard' | 'manual'
   manualPricePerNight?: number | null
+  manualTotalAmount?: number | null
   specialRateReason?: string | null
   saleMode?: 'bed' | 'full_room'
 }
@@ -52,9 +53,10 @@ export interface CreateReservationPayload {
   commissionPercent?: number
   guestCount?: number
   guestIds?: string[]
-  // v1.7
+  // v1.7/v1.9
   pricingMode?: 'standard' | 'manual'
   manualPricePerNight?: number
+  manualTotalAmount?: number
   specialRateReason?: string
 }
 
@@ -75,5 +77,6 @@ export interface ModifyReservationPayload {
   guestCount?: number
   pricingMode?: 'standard' | 'manual'
   manualPricePerNight?: number
+  manualTotalAmount?: number
   specialRateReason?: string
 }

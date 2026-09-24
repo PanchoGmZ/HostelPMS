@@ -44,12 +44,23 @@ export async function loadReports(
     console.error('Error fetching active stays:', err)
   }
 
+  const aggregatedRevenueByCurrency: Record<string, number> = {}
+  summaries.forEach((s) => {
+    if (s.revenueByCurrency) {
+      Object.entries(s.revenueByCurrency).forEach(([cur, val]) => {
+        if (!aggregatedRevenueByCurrency[cur]) aggregatedRevenueByCurrency[cur] = 0
+        aggregatedRevenueByCurrency[cur] += val
+      })
+    }
+  })
+
   return {
     metrics: {
       reservations: summaries.length > 0 ? summaries.reduce((acc, curr) => acc + (curr.reservations ?? 0), 0) : -1,
       activeStays: activeStaysCount,
       openFolios: 0,
       revenue: summaries.length > 0 ? summaries.reduce((acc, curr) => acc + (curr.revenue ?? 0), 0) : -1,
+      revenueByCurrency: aggregatedRevenueByCurrency,
       occupancy: summaries.length > 0 ? (summaries[0]?.occupancy ?? 0) : -1,
     },
     summaries,
