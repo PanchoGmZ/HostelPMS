@@ -14,12 +14,19 @@ export interface ReservationLine {
   updatedAt: { seconds: number }
 }
 
+export interface BookingContact {
+  name: string
+  phone?: string
+  note?: string
+}
+
 export interface Reservation {
   id: string
   roomId: string
   bedIds: string[]
   primaryGuestId: string | null
   guestIds?: string[]
+  bookingContact?: BookingContact | null
   checkInDate: { seconds: number }
   checkOutDate: { seconds: number }
   status: ReservationStatus
@@ -42,7 +49,8 @@ export interface Reservation {
 
 export interface CreateReservationPayload {
   establishmentId: string
-  guestId?: string
+  guestId?: string | null
+  bookingContact?: BookingContact
   saleMode: 'bed' | 'full_room'
   roomId: string
   bedIds: string[]
@@ -70,8 +78,9 @@ export interface CancelReservationPayload {
 export interface ModifyReservationPayload {
   establishmentId: string
   reservationId: string
-  primaryGuestId?: string
+  primaryGuestId?: string | null
   guestIds?: string[]
+  bookingContact?: BookingContact | null
   channel?: string
   commissionPercent?: number
   guestCount?: number

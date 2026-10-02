@@ -13,6 +13,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CheckCircle,
+  LogIn,
+  AlertTriangle,
 } from 'lucide-react'
 import { useAuth } from '../../context/useAuth'
 import { listRooms } from '../../services/rooms/roomsService'
@@ -20,6 +22,7 @@ import { searchGuests } from '../../services/guests/guestsService'
 import { cancelReservation, listReservations } from '../../services/reservations/reservationsService'
 import { NewReservationModal } from '../../components/reception/NewReservationModal'
 import { ModifyReservationModal } from '../../components/reception/ModifyReservationModal'
+import { CheckInModal } from '../../components/reception/CheckInModal'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 import type { Reservation, ReservationStatus } from '../../types/reservations'
@@ -54,6 +57,8 @@ export function ReservationsPage() {
   const [canceling, setCanceling] = useState(false)
   // v1.7: modificar reserva
   const [modifyingReservation, setModifyingReservation] = useState<Reservation | null>(null)
+  // v1.11: check-in desde reservas
+  const [checkingInReservation, setCheckingInReservation] = useState<Reservation | null>(null)
 
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<'all' | ReservationStatus>('all')
@@ -88,11 +93,16 @@ export function ReservationsPage() {
     return reservations.filter((item) => {
       const matchesStatus = statusFilter === 'all' || item.status === statusFilter
       const guest = guests.find((g) => g.id === item.primaryGuestId)
-      const guestName = guest ? `${guest.firstName} ${guest.lastName}`.toLowerCase() : 'huésped'
+      const guestName = guest
+        ? `${guest.firstName} ${guest.lastName}`.toLowerCase()
+        : (item.bookingContact?.name ? item.bookingContact.name.toLowerCase() : 'huésped')
+      const contactPhone = item.bookingContact?.phone ? item.bookingContact.phone.toLowerCase() : ''
+      const q = searchQuery.toLowerCase().trim()
       const matchesQuery =
-        searchQuery.trim() === '' ||
-        guestName.includes(searchQuery.toLowerCase()) ||
-        item.id.toLowerCase().includes(searchQuery.toLowerCase())
+        q === '' ||
+        guestName.includes(q) ||
+        contactPhone.includes(q) ||
+        item.id.toLowerCase().includes(q)
       return matchesStatus && matchesQuery
     })
   }, [reservations, statusFilter, searchQuery, guests])
@@ -241,11 +251,37 @@ export function ReservationsPage() {
                     <StatusBadge status={reservation.status} />
                   </div>
 
-                  <div className="res-card-guest">
-                    {guest ? `${guest.firstName} ${guest.lastName}` : 'Huésped no asignado'}
+                  <div className="res-card-guest" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                    <strong style={{ fontSize: '15px', color: 'var(--ink)' }}>
+                      {guest ? `${guest.firstName} ${guest.lastName}` : (reservation.bookingContact?.name || 'Huésped')}
+                    </strong>
+                    <span style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: 500 }}>
+                      · {reservation.guestCount ?? (reservation.bedIds?.length || 1)} {(reservation.guestCount ?? (reservation.bedIds?.length || 1)) === 1 ? 'huésped' : 'huéspedes'}
+                    </span>
+                    {!guest && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        padding: '1px 8px',
+                        borderRadius: '12px',
+                        background: '#fef3c7',
+                        color: '#92400e',
+                        border: '1px solid #fde68a'
+                      }}>
+                        <AlertTriangle size={11} /> Datos pendientes
+                      </span>
+                    )}
                     {guest?.documentNumber && (
-                      <span style={{ fontSize: '13px', color: 'var(--muted)', fontWeight: 500, marginLeft: '8px' }}>
+                      <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500, marginLeft: '4px' }}>
                         Doc: {guest.documentNumber}
+                      </span>
+                    )}
+                    {!guest && reservation.bookingContact?.phone && (
+                      <span style={{ fontSize: '12px', color: 'var(--muted)', fontWeight: 500, marginLeft: '4px' }}>
+                        Tel: {reservation.bookingContact.phone}
                       </span>
                     )}
                   </div>
@@ -260,14 +296,28 @@ export function ReservationsPage() {
                   </div>
 
                   <div className="res-card-bottom">
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                       {reservation.channel && (
                         <span className="res-channel">
                           {reservation.channel}
                         </span>
                       )}
+                      {/* v1.11: botón Check-in directo */}
+                      {reservation.status === 'confirmed' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCheckingInReservation(reservation)
+                          }}
+                          className="primary-button compact-button"
+                          style={{ padding: '4px 10px', fontSize: '12px', minHeight: 'auto', background: '#059669', borderColor: '#059669' }}
+                        >
+                          <LogIn size={12} /> Check-in
+                        </button>
+                      )}
                       {/* v1.7: botón Modificar — solo reservas confirmadas (pre-check-in) */}
-                    {reservation.status === 'confirmed' && (
+                      {reservation.status === 'confirmed' && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -280,7 +330,7 @@ export function ReservationsPage() {
                           Modificar
                         </button>
                       )}
-                    {reservation.status === 'confirmed' && (
+                      {reservation.status === 'confirmed' && (
                         <button
                           type="button"
                           onClick={(e) => {
@@ -377,6 +427,10 @@ export function ReservationsPage() {
             setSelectedReservationDetails(null)
             setModifyingReservation(res)
           }}
+          onCheckInRequest={(res) => {
+            setSelectedReservationDetails(null)
+            setCheckingInReservation(res)
+          }}
         />
       )}
 
@@ -394,6 +448,25 @@ export function ReservationsPage() {
             void load()
           }}
           onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {/* v1.11: Modal Check-in para Reservas */}
+      {checkingInReservation && (
+        <CheckInModal
+          establishmentId={establishmentId}
+          reservation={checkingInReservation}
+          reservations={reservations}
+          rooms={rooms}
+          guests={guests}
+          onClose={() => setCheckingInReservation(null)}
+          onSuccess={(msg) => {
+            setCheckingInReservation(null)
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(msg) => setError(msg)}
+          onReservationUpdated={() => void load()}
         />
       )}
     </div>
@@ -600,6 +673,7 @@ interface ReservationDetailsModalProps {
   onClose: () => void
   onCancelRequest?: (res: Reservation) => void
   onModifyRequest?: (res: Reservation) => void
+  onCheckInRequest?: (res: Reservation) => void
 }
 
 function ReservationDetailsModal({
@@ -609,6 +683,7 @@ function ReservationDetailsModal({
   onClose,
   onCancelRequest,
   onModifyRequest,
+  onCheckInRequest,
 }: ReservationDetailsModalProps) {
   const nights =
     reservation.checkInDate && reservation.checkOutDate
@@ -631,7 +706,7 @@ function ReservationDetailsModal({
               <StatusBadge status={reservation.status} />
             </div>
             <h2 style={{ margin: 0, fontSize: '20px' }}>
-              {guest ? `${guest.firstName} ${guest.lastName}` : 'Huésped no asignado'}
+              {guest ? `${guest.firstName} ${guest.lastName}` : (reservation.bookingContact?.name || 'Huésped sin asignar')}
             </h2>
             <div style={{ fontSize: '12px', color: 'var(--muted)', marginTop: '2px', fontFamily: 'monospace' }}>
               ID: {reservation.id}
@@ -670,36 +745,61 @@ function ReservationDetailsModal({
           {/* Huésped */}
           <div className="res-detail-section">
             <h4>
-              <User size={14} /> Huésped
+              <User size={14} /> Huésped / Contacto
             </h4>
-            <div className="res-detail-rows">
-              <div className="res-detail-row">
-                <span className="text-muted">Documento:</span>
-                <span>
-                  {guest?.documentNumber
-                    ? `${guest.documentType === 'passport' ? 'Pasaporte' : 'Doc'}: ${guest.documentNumber}`
-                    : 'Sin registrar'}
-                </span>
+            {guest ? (
+              <div className="res-detail-rows">
+                <div className="res-detail-row">
+                  <span className="text-muted">Titular:</span>
+                  <strong>{guest.firstName} {guest.lastName}</strong>
+                </div>
+                <div className="res-detail-row">
+                  <span className="text-muted">Documento:</span>
+                  <span>
+                    {guest.documentNumber
+                      ? `${guest.documentType === 'passport' ? 'Pasaporte' : 'Doc'}: ${guest.documentNumber}`
+                      : 'Sin registrar'}
+                  </span>
+                </div>
+                {guest.nationality && (
+                  <div className="res-detail-row">
+                    <span className="text-muted">Nacionalidad:</span>
+                    <span>{guest.nationality}</span>
+                  </div>
+                )}
+                {guest.whatsapp && (
+                  <div className="res-detail-row">
+                    <span className="text-muted">WhatsApp:</span>
+                    <span>{guest.whatsapp}</span>
+                  </div>
+                )}
               </div>
-              {guest?.nationality && (
+            ) : (
+              <div className="res-detail-rows">
                 <div className="res-detail-row">
-                  <span className="text-muted">Nacionalidad:</span>
-                  <span>{guest.nationality}</span>
+                  <span className="text-muted">Referencia:</span>
+                  <strong>{reservation.bookingContact?.name || 'Lucía'}</strong>
                 </div>
-              )}
-              {guest?.whatsapp && (
                 <div className="res-detail-row">
-                  <span className="text-muted">WhatsApp:</span>
-                  <span>{guest.whatsapp}</span>
+                  <span className="text-muted">Estado ficha:</span>
+                  <span style={{ color: '#92400e', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <AlertTriangle size={12} /> Datos pendientes (al Check-in)
+                  </span>
                 </div>
-              )}
-              {guest?.email && (
-                <div className="res-detail-row">
-                  <span className="text-muted">Email:</span>
-                  <span>{guest.email}</span>
-                </div>
-              )}
-            </div>
+                {reservation.bookingContact?.phone && (
+                  <div className="res-detail-row">
+                    <span className="text-muted">Teléfono / contacto:</span>
+                    <span>{reservation.bookingContact.phone}</span>
+                  </div>
+                )}
+                {reservation.bookingContact?.note && (
+                  <div className="res-detail-row">
+                    <span className="text-muted">Nota:</span>
+                    <span>{reservation.bookingContact.note}</span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Habitación y Camas */}
@@ -758,6 +858,20 @@ function ReservationDetailsModal({
               }}
             >
               Eliminar reserva
+            </button>
+          )}
+          {/* v1.11: botón Check-in en modal de detalles */}
+          {reservation.status === 'confirmed' && (
+            <button
+              type="button"
+              className="primary-button compact-button"
+              style={{ background: '#059669', borderColor: '#059669', padding: '6px 14px', fontSize: '12px' }}
+              onClick={() => {
+                onClose()
+                onCheckInRequest?.(reservation)
+              }}
+            >
+              <LogIn size={13} /> Check-in
             </button>
           )}
           {/* v1.7: botón Modificar Reserva en modal de detalles */}

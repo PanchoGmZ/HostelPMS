@@ -36,9 +36,15 @@ export function ModifyReservationModal({
 
   // Identificar huésped titular actual
   const currentGuest = guests.find((g) => g.id === reservation.primaryGuestId)
+  const isInitiallyQuick = !reservation.primaryGuestId
 
   // Estado inicial desde la reserva existente
   const [primaryGuestId, setPrimaryGuestId] = useState(reservation.primaryGuestId ?? '')
+  const [linkRegisteredMode, setLinkRegisteredMode] = useState(!isInitiallyQuick)
+  const [contactName, setContactName] = useState(reservation.bookingContact?.name ?? '')
+  const [contactPhone, setContactPhone] = useState(reservation.bookingContact?.phone ?? '')
+  const [contactNote, setContactNote] = useState(reservation.bookingContact?.note ?? '')
+
   const [guestIds, setGuestIds] = useState<string[]>(
     (reservation.guestIds ?? []).filter((id) => id !== reservation.primaryGuestId)
   )
@@ -100,9 +106,16 @@ export function ModifyReservationModal({
     e.preventDefault()
     setFormError(null)
 
-    if (!primaryGuestId) {
-      setFormError('Selecciona un huésped titular.')
-      return
+    if (linkRegisteredMode) {
+      if (!primaryGuestId) {
+        setFormError('Selecciona un huésped titular.')
+        return
+      }
+    } else {
+      if (!contactName.trim()) {
+        setFormError('Ingresa el nombre de referencia para la reserva rápida.')
+        return
+      }
     }
 
     if (pricingMode === 'manual') {
@@ -131,9 +144,15 @@ export function ModifyReservationModal({
       const payload: Parameters<typeof modifyReservation>[0] = {
         establishmentId,
         reservationId: reservation.id,
-        primaryGuestId: primaryGuestId || undefined,
-        guestIds: [primaryGuestId, ...guestIds.filter((id) => id.trim() !== '')],
+        primaryGuestId: linkRegisteredMode ? (primaryGuestId || undefined) : undefined,
+        guestIds: linkRegisteredMode && primaryGuestId ? [primaryGuestId, ...guestIds.filter((id) => id.trim() !== '')] : [],
+        bookingContact: linkRegisteredMode ? null : {
+          name: contactName.trim(),
+          phone: contactPhone.trim() || undefined,
+          note: contactNote.trim() || undefined,
+        },
         channel,
+        guestCount,
         pricingMode,
         ...(pricingMode === 'manual'
           ? {
@@ -141,7 +160,6 @@ export function ModifyReservationModal({
               specialRateReason: effectiveReason,
             }
           : {}),
-        ...(isPrivate ? { guestCount } : {}),
         ...((channel === 'booking' || channel === 'airbnb') && commissionPercent !== ''
           ? { commissionPercent: Number(commissionPercent) }
           : { commissionPercent: 0 }),
@@ -185,38 +203,129 @@ export function ModifyReservationModal({
           </div>
         )}
 
-        {/* Huésped Titular */}
-        <div style={{ marginBottom: '14px' }}>
-          <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block' }}>
-            Huésped Titular
-          </label>
-          {guests.length > 5 && (
-            <input
-              type="text"
-              placeholder="Buscar por nombre o documento..."
-              value={guestSearch}
-              onChange={(e) => setGuestSearch(e.target.value)}
-              style={{ marginBottom: '6px' }}
-            />
-          )}
-          <select
-            value={primaryGuestId}
-            onChange={(e) => setPrimaryGuestId(e.target.value)}
-            required
-          >
-            <option value="">— Seleccionar huésped —</option>
-            {filteredGuests.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.firstName} {g.lastName} — Doc: {g.documentNumber}
-              </option>
-            ))}
-          </select>
-          {currentGuest && primaryGuestId !== reservation.primaryGuestId && (
-            <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
-              Antes: {currentGuest.firstName} {currentGuest.lastName}
-            </p>
-          )}
-        </div>
+        {/* Huésped Titular / Contacto de Reserva */}
+        {isInitiallyQuick ? (
+          <div style={{ marginBottom: '14px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px', margin: 0, color: 'var(--ink)' }}>
+                {linkRegisteredMode ? 'Vincular Huésped Registrado' : 'Datos de Contacto (Reserva Rápida)'}
+              </label>
+              <button
+                type="button"
+                className="text-link"
+                style={{ fontSize: '12px', color: 'var(--teal)', fontWeight: 600 }}
+                onClick={() => {
+                  setLinkRegisteredMode(!linkRegisteredMode)
+                  if (!linkRegisteredMode && !primaryGuestId && guests[0]) {
+                    setPrimaryGuestId(guests[0].id)
+                  }
+                }}
+              >
+                {linkRegisteredMode ? '← Editar como reserva rápida' : '🔗 Vincular con huésped registrado'}
+              </button>
+            </div>
+
+            {!linkRegisteredMode ? (
+              <div style={{ display: 'grid', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                      Nombre de referencia <span style={{ color: 'var(--coral)' }}>*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={contactName}
+                      onChange={(e) => setContactName(e.target.value)}
+                      placeholder="Ej: Lucía"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                      Teléfono / contacto
+                    </label>
+                    <input
+                      type="text"
+                      value={contactPhone}
+                      onChange={(e) => setContactPhone(e.target.value)}
+                      placeholder="Ej: 92xxxxxx"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    Nota de reserva
+                  </label>
+                  <input
+                    type="text"
+                    value={contactNote}
+                    onChange={(e) => setContactNote(e.target.value)}
+                    placeholder="Ej: Llegan por la tarde..."
+                  />
+                </div>
+                <div style={{ fontSize: '11px', color: '#92400e', background: '#fef3c7', padding: '6px 10px', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                  ⚠️ <strong>Datos pendientes:</strong> Puedes editar los datos de contacto o vincular un huésped titular registrado.
+                </div>
+              </div>
+            ) : (
+              <div>
+                {guests.length > 5 && (
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre o documento..."
+                    value={guestSearch}
+                    onChange={(e) => setGuestSearch(e.target.value)}
+                    style={{ marginBottom: '6px' }}
+                  />
+                )}
+                <select
+                  value={primaryGuestId}
+                  onChange={(e) => setPrimaryGuestId(e.target.value)}
+                  required
+                >
+                  <option value="">— Seleccionar huésped titular —</option>
+                  {filteredGuests.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.firstName} {g.lastName} — Doc: {g.documentNumber}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block' }}>
+              Huésped Titular
+            </label>
+            {guests.length > 5 && (
+              <input
+                type="text"
+                placeholder="Buscar por nombre o documento..."
+                value={guestSearch}
+                onChange={(e) => setGuestSearch(e.target.value)}
+                style={{ marginBottom: '6px' }}
+              />
+            )}
+            <select
+              value={primaryGuestId}
+              onChange={(e) => setPrimaryGuestId(e.target.value)}
+              required
+            >
+              <option value="">— Seleccionar huésped —</option>
+              {filteredGuests.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.firstName} {g.lastName} — Doc: {g.documentNumber}
+                </option>
+              ))}
+            </select>
+            {currentGuest && primaryGuestId !== reservation.primaryGuestId && (
+              <p style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '4px' }}>
+                Antes: {currentGuest.firstName} {currentGuest.lastName}
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Acompañantes (privada) */}
         {isPrivate && (

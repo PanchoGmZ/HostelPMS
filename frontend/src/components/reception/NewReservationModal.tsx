@@ -44,9 +44,15 @@ export function NewReservationModal({
   const tomorrowStr = getTomorrowString(todayStr)
 
   const [localGuests, setLocalGuests] = useState<Guest[]>(guests)
-  const [guestMode, setGuestMode] = useState<'registered' | 'new'>('registered')
+  const [guestMode, setGuestMode] = useState<'quick' | 'registered' | 'new'>('quick')
   const [showNewGuestModal, setShowNewGuestModal] = useState(false)
   const [newGuestDraft, setNewGuestDraft] = useState<{ draft: Draft }>({ draft: emptyDraft })
+
+  // Quick booking state
+  const [quickName, setQuickName] = useState('')
+  const [quickPhone, setQuickPhone] = useState('')
+  const [quickGuestCount, setQuickGuestCount] = useState<number>(1)
+  const [quickNote, setQuickNote] = useState('')
 
   const [guestId, setGuestId] = useState(localGuests[0]?.id ?? '')
   const [guestSearch, setGuestSearch] = useState('')
@@ -114,10 +120,22 @@ export function NewReservationModal({
     e.preventDefault()
     setFormError(null)
 
-    if (!guestId) {
-      setFormError('Debes seleccionar un huésped para la reserva.')
-      return
+    if (guestMode === 'quick') {
+      if (!quickName.trim()) {
+        setFormError('Ingresa un nombre de referencia para la reserva rápida.')
+        return
+      }
+      if (!quickGuestCount || quickGuestCount < 1) {
+        setFormError('La cantidad de personas debe ser al menos 1.')
+        return
+      }
+    } else {
+      if (!guestId) {
+        setFormError('Debes seleccionar un huésped para la reserva.')
+        return
+      }
     }
+
     if (!effectiveBedId) {
       setFormError('Selecciona una cama válida.')
       return
@@ -137,20 +155,36 @@ export function NewReservationModal({
       dates.push(d.toISOString().slice(0, 10))
     }
 
-    const pricePerNight = {
-      [effectiveBedId]: Object.fromEntries(dates.map((d) => [d, pricePerNightNumber])),
+    const isPrivate = selectedRoom?.type === 'private'
+    const effectiveBedIds = isPrivate && availableBeds.length > 0 ? availableBeds.map(b => b.id) : [effectiveBedId]
+    const saleMode: 'bed' | 'full_room' = isPrivate ? 'full_room' : 'bed'
+
+    const pricePerNight: Record<string, Record<string, number>> = {}
+    for (const bId of effectiveBedIds) {
+      pricePerNight[bId] = Object.fromEntries(dates.map((d) => [d, pricePerNightNumber]))
     }
 
     const payload: Parameters<typeof createReservation>[0] = {
       establishmentId,
-      guestId,
       roomId,
-      bedIds: [effectiveBedId],
-      saleMode: 'bed',
+      bedIds: effectiveBedIds,
+      saleMode,
       checkIn,
       checkOut,
       pricePerNight,
       channel,
+      guestCount: guestMode === 'quick' ? quickGuestCount : 1,
+      ...(guestMode === 'quick'
+        ? {
+            bookingContact: {
+              name: quickName.trim(),
+              phone: quickPhone.trim() || undefined,
+              note: quickNote.trim() || undefined,
+            },
+          }
+        : {
+            guestId,
+          }),
     }
 
     if (useAgreedPrice) {
@@ -163,7 +197,11 @@ export function NewReservationModal({
     try {
       await createReservation(payload)
 
-      onSuccess('Reserva creada y confirmada exitosamente.')
+      onSuccess(
+        guestMode === 'quick'
+          ? `Reserva rápida confirmada para ${quickName.trim()} (${quickGuestCount} pers.). Datos pendientes al check-in.`
+          : 'Reserva creada y confirmada exitosamente.'
+      )
       onClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al crear reserva'
@@ -199,9 +237,20 @@ export function NewReservationModal({
           </div>
         )}
 
-        {/* Guest selector */}
+        {/* Huésped / Contacto */}
         <div style={{ marginBottom: '14px', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid var(--line)' }}>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 600, fontSize: '13px', color: 'var(--ink)' }}>
+            Huésped / contacto
+          </label>
+          <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={guestMode === 'quick' ? 'primary-button compact-button' : 'secondary-button compact-button'}
+              onClick={() => setGuestMode('quick')}
+              style={{ fontWeight: guestMode === 'quick' ? 700 : 500 }}
+            >
+              ⚡ Reserva rápida
+            </button>
             <button
               type="button"
               className={guestMode === 'registered' ? 'primary-button compact-button' : 'secondary-button compact-button'}
@@ -218,9 +267,71 @@ export function NewReservationModal({
             </button>
           </div>
 
-          {guestMode === 'registered' ? (
+          {guestMode === 'quick' && (
+            <div style={{ display: 'grid', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    Nombre de referencia <span style={{ color: 'var(--coral)' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Lucía"
+                    value={quickName}
+                    onChange={(e) => setQuickName(e.target.value)}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    Teléfono / contacto (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: 92xxxxxx o WhatsApp"
+                    value={quickPhone}
+                    onChange={(e) => setQuickPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    Cantidad de personas <span style={{ color: 'var(--coral)' }}>*</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    value={quickGuestCount}
+                    onChange={(e) => setQuickGuestCount(Math.max(1, parseInt(e.target.value) || 1))}
+                    required
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '12px', marginBottom: '4px' }}>
+                    Nota de reserva (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Llegan por la tarde..."
+                    value={quickNote}
+                    onChange={(e) => setQuickNote(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ fontSize: '12px', color: '#047857', background: '#ecfdf5', padding: '6px 10px', borderRadius: '6px', border: '1px solid #a7f3d0' }}>
+                💡 <strong>Reserva rápida:</strong> No exige documento ni datos migratorios ahora. La ficha completa se solicitará en recepción al momento del Check-in.
+              </div>
+            </div>
+          )}
+
+          {guestMode === 'registered' && (
             <div>
-              <label>Seleccionar Huésped:</label>
+              <label style={{ fontSize: '12px', marginBottom: '4px' }}>Seleccionar Huésped Registrado:</label>
               <input
                 type="text"
                 placeholder="Buscar por nombre o documento..."
@@ -236,12 +347,14 @@ export function NewReservationModal({
                 ))}
               </select>
             </div>
-          ) : (
+          )}
+
+          {guestMode === 'new' && (
             <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
               {localGuests.find(g => g.id === guestId) ? (
                 <span>Huésped registrado seleccionado: <strong>{localGuests.find(g => g.id === guestId)?.firstName} {localGuests.find(g => g.id === guestId)?.lastName}</strong></span>
               ) : (
-                <span>Haz clic en "Nuevo huésped" para registrar uno.</span>
+                <span>Haz clic en "Nuevo huésped" para registrar uno con ficha completa.</span>
               )}
             </div>
           )}

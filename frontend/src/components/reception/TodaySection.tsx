@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LogIn, LogOut, FileText, CalendarCheck, CalendarX, ChevronDown, ChevronUp, User } from 'lucide-react'
+import { LogIn, LogOut, FileText, CalendarCheck, CalendarX, ChevronDown, ChevronUp, User, AlertTriangle } from 'lucide-react'
 import type { Reservation } from '../../types/reservations'
 import type { Stay } from '../../types/stays'
 import type { Guest } from '../../types/guests'
@@ -98,20 +98,39 @@ export function TodaySection({
             ) : (
               <div className="today-cards-grid">
                 {todayArrivals.map((res) => {
-                  const guestName = getGuestName(res.primaryGuestId)
+                  const isPendingData = !res.primaryGuestId
+                  const guestName = res.primaryGuestId
+                    ? getGuestName(res.primaryGuestId)
+                    : (res.bookingContact?.name || 'Huésped sin asignar')
                   const roomName = getRoomName(res.roomId)
 
                   return (
                     <div key={res.id} className="today-item-card arrival">
                       <div className="item-main">
-                        <div className="item-guest">
+                        <div className="item-guest" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <User size={15} className="item-icon" />
                           <strong>{guestName}</strong>
+                          {isPendingData && (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              fontSize: '11px',
+                              fontWeight: 600,
+                              padding: '1px 6px',
+                              borderRadius: '10px',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              border: '1px solid #fde68a'
+                            }}>
+                              <AlertTriangle size={11} /> Datos pendientes
+                            </span>
+                          )}
                         </div>
                         <div className="item-details">
                           <span>{roomName}</span>
                           <span className="dot-sep">•</span>
-                          <span>{res.bedIds?.length ?? 1} cama(s)</span>
+                          <span>{res.guestCount ?? (res.bedIds?.length || 1)} huésped(es)</span>
                           {res.channel && (
                             <>
                               <span className="dot-sep">•</span>

@@ -65,15 +65,27 @@ export function KanbanBoard({
             <div className="kanban-empty">No hay llegadas programadas.</div>
           ) : (
             todayArrivals.map((res) => {
-              const guestName = getGuestName(res.primaryGuestId)
+              const isQuick = !res.primaryGuestId && !!res.bookingContact?.name
+              const guestName = isQuick
+                ? res.bookingContact?.name
+                : getGuestName(res.primaryGuestId)
+              const guestCount = res.guestCount ?? res.bedIds?.length ?? 1
               const roomName = getRoomName(res.roomId)
               return (
                 <div key={res.id} className="kanban-card">
-                  <div className="card-header">
+                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span className="card-tag tag-low">Reserva</span>
+                    {isQuick && (
+                      <span style={{ fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px', background: '#fef3c7', color: '#92400e', fontWeight: 600 }}>
+                        ⚠️ Datos pendientes
+                      </span>
+                    )}
                   </div>
                   <h4 className="card-title">{guestName}</h4>
-                  <p className="card-desc">{roomName} • {res.bedIds?.length ?? 1} cama(s)</p>
+                  <p className="card-desc">
+                    {roomName} • {guestCount} {guestCount === 1 ? 'huésped' : 'huéspedes'}
+                    {res.bookingContact?.phone ? ` • 📞 ${res.bookingContact.phone}` : ''}
+                  </p>
                   <div className="card-footer">
                     <div className="card-avatars">
                       <div className="avatar"><User size={12}/></div>

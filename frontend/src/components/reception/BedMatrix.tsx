@@ -7,6 +7,8 @@ import type { Folio } from '../../types/folios'
 import type { Reservation } from '../../types/reservations'
 import { RoomCard } from './RoomCard'
 
+import { BedLegend } from '../beds/BedLegend'
+
 type FilterStatus = 'all' | 'available' | 'occupied' | 'reserved' | 'cleaning' | 'maintenance'
 
 interface BedMatrixProps {
@@ -131,7 +133,7 @@ export function BedMatrix({
             onClick={() => setFilter('available')}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#1b5e30' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#10b981' }} />
             Libres ({counts.available})
           </button>
           <button
@@ -140,7 +142,7 @@ export function BedMatrix({
             onClick={() => setFilter('occupied')}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#b9381e' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
             Ocupadas ({counts.occupied})
           </button>
           <button
@@ -149,7 +151,7 @@ export function BedMatrix({
             onClick={() => setFilter('reserved')}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#661e66' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b' }} />
             Reservadas ({counts.reserved})
           </button>
           <button
@@ -158,7 +160,7 @@ export function BedMatrix({
             onClick={() => setFilter('cleaning')}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#806729' }} />
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#0284c7' }} />
             Limpieza ({counts.cleaning})
           </button>
           <button
@@ -167,8 +169,8 @@ export function BedMatrix({
             onClick={() => setFilter('maintenance')}
             style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
           >
-            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#b95e1e' }} />
-            Mantenimiento ({counts.maintenance})
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#94a3b8' }} />
+            Bloqueadas ({counts.maintenance})
           </button>
         </div>
 
@@ -181,6 +183,14 @@ export function BedMatrix({
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+      </div>
+
+      {/* Sub-barra de leyenda visual */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 14px', flexWrap: 'wrap', gap: '8px' }}>
+        <BedLegend />
+        <span style={{ fontSize: '11px', color: '#64748b' }}>
+          💡 Clic en cama libre para Walk-in · Reservada para Check-in · Ocupada para estadía
+        </span>
       </div>
 
       {/* Rooms and Beds Grid */}

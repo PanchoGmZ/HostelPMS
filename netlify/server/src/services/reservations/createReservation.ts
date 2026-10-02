@@ -5,9 +5,16 @@ import type { AuthContext } from '../../auth/verifyAuth';
 // ============================================================================
 // Payload y respuesta
 // ============================================================================
+export interface BookingContact {
+  name: string;
+  phone?: string;
+  note?: string;
+}
+
 export interface CreateReservationPayload {
   establishmentId: string;
   guestId?: string;
+  bookingContact?: BookingContact;
   saleMode: 'bed' | 'full_room';
   roomId: string;
   bedIds: string[];
@@ -80,6 +87,21 @@ export async function createReservationService(
   if (!establishmentId || !roomId || !Array.isArray(bedIds) || bedIds.length === 0) {
     throw new ReservationError(
       'Faltan parámetros de reserva obligatorios (establishmentId, roomId, bedIds).'
+    );
+  }
+
+  // Auditar createReservation: aceptar primaryGuestId ausente SOLO si es quick booking con bookingContact.name
+  const hasValidGuest = typeof guestId === 'string' && guestId.trim().length > 0;
+  const isQuickBooking =
+    !hasValidGuest &&
+    !!payload.bookingContact &&
+    typeof payload.bookingContact.name === 'string' &&
+    payload.bookingContact.name.trim().length > 0;
+
+  if (!hasValidGuest && !isQuickBooking) {
+    throw new ReservationError(
+      'Debes seleccionar un huésped registrado o proporcionar los datos de contacto (nombre de referencia) para una reserva rápida.',
+      400
     );
   }
   if (saleMode !== 'bed' && saleMode !== 'full_room') {
@@ -243,14 +265,12 @@ export async function createReservationService(
         );
       }
       
-      // v1.7: guestCount siempre como número, nunca undefined
-      // bed → 1, full_room → guestCount del payload o 1 como fallback seguro
+      // guestCount siempre como número, nunca undefined
+      // Respeta guestCount para full_room y para bed mode si fue provisto
       const resolvedGuestCount: number =
-        saleMode === 'bed'
-          ? 1
-          : typeof guestCount === 'number' && guestCount >= 1
-            ? Math.min(guestCount, room.maxGuests ?? 99)
-            : 1;
+        typeof guestCount === 'number' && guestCount >= 1
+          ? (saleMode === 'full_room' ? Math.min(guestCount, room.maxGuests ?? 99) : guestCount)
+          : (saleMode === 'bed' ? bedIds.length : 1);
 
       // Calculate server-side pricing
       let commissionRate = 0;
@@ -391,8 +411,15 @@ export async function createReservationService(
       const reservationDoc: Record<string, unknown> = {
         channel,
         status: 'confirmed',
-        primaryGuestId: guestId || null,
-        guestIds: guestIds && guestIds.length > 0 ? guestIds : (guestId ? [guestId] : []),
+        primaryGuestId: hasValidGuest ? guestId : null,
+        guestIds: guestIds && guestIds.length > 0 ? guestIds : (hasValidGuest ? [guestId!] : []),
+        bookingContact: isQuickBooking || payload.bookingContact
+          ? {
+              name: payload.bookingContact!.name.trim(),
+              phone: payload.bookingContact!.phone?.trim() || null,
+              note: payload.bookingContact!.note?.trim() || null,
+            }
+          : null,
         roomId,
         bedIds,
         checkInDate,

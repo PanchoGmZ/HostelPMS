@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, type FormEvent } from 'react'
-import { X, UserPlus, UserCheck, AlertTriangle, Loader2, Info } from 'lucide-react'
+import { X, UserPlus, UserCheck, AlertTriangle, Loader2, Info, Clock } from 'lucide-react'
 import { saveGuest } from '../../services/guests/guestsService'
 import { createReservation } from '../../services/reservations/reservationsService'
 import { checkInGuest } from '../../services/stays/staysService'
@@ -47,6 +47,10 @@ export function WalkInModal({
   const today = new Date()
   const todayStr = toLocalDateString(today)
 
+  // v1.12: Fecha real de ingreso (retroactivo)
+  const [checkInDateStr, setCheckInDateStr] = useState(todayStr)
+  const isRetroactive = checkInDateStr < todayStr
+
   // Selected Room & Bed
   const [selectedRoomId, setSelectedRoomId] = useState(room.id)
   const [selectedBedId, setSelectedBedId] = useState(bed.id)
@@ -88,15 +92,17 @@ export function WalkInModal({
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  // v1.7-hotfix: usar typeof guard — '' no produce cálculo inválido
+  // v1.12: checkOutDateStr ahora parte desde checkInDateStr (no siempre desde hoy)
   const checkOutDateStr = useMemo(() => {
-    const d = new Date()
     const n = typeof nights === 'number' && nights >= 1 ? nights : 1
-    d.setDate(d.getDate() + n)
-    return toLocalDateString(d)
-  }, [nights])
+    // Usar T12:00:00 para evitar boundary issues al sumar días
+    const d = new Date(`${checkInDateStr}T12:00:00.000-04:00`)
+    d.setUTCDate(d.getUTCDate() + n)
+    return d.toISOString().slice(0, 10)
+  }, [nights, checkInDateStr])
 
   // Availability logic
+  // v1.12: disponibilidad ahora usa checkInDateStr (puede ser retroactivo)
   const occupiedBedIds = useMemo(() => {
     const ids = new Set<string>()
     stays.forEach(s => {
@@ -104,19 +110,19 @@ export function WalkInModal({
         s.bedIds?.forEach(id => ids.add(id))
       }
     })
-    const checkInDate = new Date(`${todayStr}T00:00:00Z`);
-    const checkOutDate = new Date(`${checkOutDateStr}T00:00:00Z`);
+    const rangeStart = new Date(`${checkInDateStr}T00:00:00.000-04:00`);
+    const rangeEnd = new Date(`${checkOutDateStr}T00:00:00.000-04:00`);
     reservations.forEach(r => {
       if (r.status !== 'confirmed') return;
       if (!r.checkInDate || !r.checkOutDate) return;
       const rIn = new Date(r.checkInDate.seconds * 1000);
       const rOut = new Date(r.checkOutDate.seconds * 1000);
-      if (rIn < checkOutDate && rOut > checkInDate) {
+      if (rIn < rangeEnd && rOut > rangeStart) {
         r.bedIds?.forEach(id => ids.add(id))
       }
     })
     return ids
-  }, [stays, reservations, todayStr, checkOutDateStr])
+  }, [stays, reservations, checkInDateStr, checkOutDateStr])
 
   const selectedRoomObj = useMemo(() => rooms.find((r) => r.id === selectedRoomId) || room, [rooms, selectedRoomId, room])
   const isPrivate = selectedRoomObj.type === 'private'
@@ -248,11 +254,11 @@ export function WalkInModal({
         )
       }
 
-      // 2. Build dates array for pricePerNight
+      // 2. Build dates array for pricePerNight (v1.12: desde checkInDateStr)
       const dates: string[] = []
       for (
-        let d = new Date(`${todayStr}T00:00:00Z`);
-        d < new Date(`${checkOutDateStr}T00:00:00Z`);
+        let d = new Date(`${checkInDateStr}T12:00:00.000-04:00`);
+        d < new Date(`${checkOutDateStr}T12:00:00.000-04:00`);
         d.setUTCDate(d.getUTCDate() + 1)
       ) {
         dates.push(d.toISOString().slice(0, 10))
@@ -272,13 +278,14 @@ export function WalkInModal({
       // v1.7: guestCount siempre número — bed=1, full_room=guestCount explícito
       const resolvedGuestCount = isPrivate ? guestCount : 1
 
+      // v1.12: checkIn usa checkInDateStr (puede ser retroactivo)
       const resResult = await createReservation({
         establishmentId,
         guestId: finalGuestId,
         roomId: selectedRoomObj.id,
         bedIds: effectiveBedIds,
         saleMode: isPrivate ? 'full_room' : 'bed',
-        checkIn: todayStr,
+        checkIn: checkInDateStr,
         checkOut: checkOutDateStr,
         pricePerNight: pricePerNightMatrix,
         channel: 'direct',
@@ -513,6 +520,51 @@ export function WalkInModal({
 
         <hr style={{ margin: '14px 0', borderTop: '1px solid var(--line)' }} />
 
+        {/* v1.12: Fecha real de ingreso */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ fontWeight: 600, fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+            <Clock size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} />
+            Fecha de ingreso
+          </label>
+          <input
+            type="date"
+            value={checkInDateStr}
+            max={todayStr}
+            onChange={(e) => {
+              const val = e.target.value
+              if (val && val <= todayStr) {
+                setCheckInDateStr(val)
+              }
+            }}
+            style={{
+              width: '100%',
+              borderColor: isRetroactive ? '#f59e0b' : undefined,
+            }}
+          />
+          {isRetroactive && (
+            <div style={{
+              marginTop: '8px',
+              padding: '10px 12px',
+              background: '#fffbeb',
+              border: '1px solid #fde68a',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '12px',
+              lineHeight: 1.5,
+              color: '#92400e',
+              display: 'flex',
+              gap: '8px',
+              alignItems: 'flex-start',
+            }}>
+              <AlertTriangle size={16} color="#d97706" style={{ flexShrink: 0, marginTop: '1px' }} />
+              <div>
+                <strong style={{ display: 'block', marginBottom: '2px' }}>Ingreso retroactivo</strong>
+                Este ingreso será registrado con fecha anterior.
+                Verifica que la habitación realmente estuvo ocupada desde esa fecha.
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Room and Bed Selection */}
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '14px' }}>
           <div>
@@ -722,7 +774,13 @@ export function WalkInModal({
         </div>
 
         {/* Summary Card */}
-        <div style={{ padding: '10px 14px', background: 'var(--mint)', borderRadius: 'var(--radius-sm)', marginBottom: '14px', fontSize: '13px' }}>
+        <div style={{ padding: '10px 14px', background: isRetroactive ? '#fffbeb' : 'var(--mint)', borderRadius: 'var(--radius-sm)', marginBottom: '14px', fontSize: '13px', border: isRetroactive ? '1px solid #fde68a' : undefined }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <span>Fecha de Ingreso:</span>
+            <strong style={{ color: isRetroactive ? '#d97706' : undefined }}>
+              {checkInDateStr}{isRetroactive ? ' (retroactivo)' : ''}
+            </strong>
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
             <span>Fecha de Salida Prevista:</span>
             <strong>{checkOutDateStr}</strong>

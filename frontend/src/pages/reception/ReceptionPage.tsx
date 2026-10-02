@@ -34,6 +34,7 @@ import { CheckoutModal } from '../../components/reception/CheckoutModal'
 import { GuestSearchModal } from '../../components/reception/GuestSearchModal'
 import { SummaryCards } from '../../components/reception/SummaryCards'
 import { NewEntryInterceptorModal } from '../../components/reception/NewEntryInterceptorModal'
+import { CheckInModal } from '../../components/reception/CheckInModal'
 
 import './ReceptionPage.css'
 
@@ -83,6 +84,7 @@ export function ReceptionPage() {
   const [posData, setPosData] = useState<{ stay: Stay; folio?: Folio } | null>(null)
   const [paymentData, setPaymentData] = useState<{ stay: Stay; folio?: Folio } | null>(null)
   const [checkoutData, setCheckoutData] = useState<{ stay: Stay; guest?: Guest; folio?: Folio } | null>(null)
+  const [checkInReservation, setCheckInReservation] = useState<Reservation | null>(null)
   const [searchModalOpen, setSearchModalOpen] = useState(false)
   const [interceptorOpen, setInterceptorOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
@@ -199,11 +201,17 @@ export function ReceptionPage() {
   const handleBedClick = (
     bed: Bed,
     room: Room,
-    stay?: Stay
+    stay?: Stay,
+    _guest?: Guest,
+    _folio?: Folio,
+    reservation?: Reservation
   ) => {
     if (stay && stay.status === 'active') {
       // Occupied bed -> Open GuestStayDrawer directly!
       setDrawerStay(stay)
+    } else if (reservation) {
+      // Reserved bed -> Open CheckInModal directly
+      setCheckInReservation(reservation)
     } else {
       // Available, dirty, or maintenance -> Open QuickActionModal
       setQuickActionBed({ bed, room })
@@ -362,15 +370,8 @@ export function ReceptionPage() {
               guests={guests}
               rooms={rooms}
               onCheckInReservation={(res) => {
-                const resRoom = rooms.find((r) => r.id === res.roomId)
-                const resBed = resRoom?.beds.find((b) => res.bedIds?.includes(b.id))
-                if (resRoom && resBed) {
-                  setMobileSidebarOpen(false)
-                  setWalkInBed({ bed: resBed, room: resRoom })
-                } else {
-                  setMobileSidebarOpen(false)
-                  setReservationModalData({})
-                }
+                setMobileSidebarOpen(false)
+                setCheckInReservation(res)
               }}
             />
             <DeparturesPanel
@@ -462,6 +463,25 @@ export function ReceptionPage() {
             void loadData(true)
           }}
           onError={(err) => setError(err)}
+        />
+      )}
+
+      {/* Check-In Modal para Reservas / Llegadas */}
+      {checkInReservation && (
+        <CheckInModal
+          establishmentId={establishmentId}
+          reservation={checkInReservation}
+          reservations={reservations}
+          rooms={rooms}
+          guests={guests}
+          onClose={() => setCheckInReservation(null)}
+          onSuccess={(msg) => {
+            setCheckInReservation(null)
+            setSuccessMessage(msg)
+            void loadData(true)
+          }}
+          onError={(err) => setError(err)}
+          onReservationUpdated={() => void loadData(true)}
         />
       )}
 

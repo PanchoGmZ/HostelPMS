@@ -1,47 +1,21 @@
-import { getFirebaseAdmin } from '../../firebase/admin';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import type { AuthContext } from '../../auth/verifyAuth';
+const { initializeApp, cert, getApps } = require('firebase-admin/app');
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const path = require('path');
 
-export interface GenerateSummaryPayload {
-  establishmentId: string;
-  date: string; // YYYY-MM-DD
+if (getApps().length === 0) {
+  const serviceAccount = require(path.join(__dirname, '../functions/serviceAccountKey.json'));
+  initializeApp({
+    credential: cert(serviceAccount),
+    projectId: 'hostel-pms-e3bc9',
+  });
 }
 
-export interface GenerateSummaryResult {
-  success: true;
-  summary: {
-    dateStr: string;
-    newReservationsCount: number;
-    cancellationsCount: number;
-    checkInsCount: number;
-    checkOutsCount: number;
-    totalRevenue: number;
-    occupancy: number;
-    revenueBOB?: number;
-    paymentMethods?: Record<string, number>;
-    paymentsCount?: number;
-    channels?: Record<string, number>;
-  };
-}
+const db = getFirestore();
 
-export class SummaryError extends Error {
-  constructor(message: string, public readonly httpStatus: number = 400) {
-    super(message);
-    this.name = 'SummaryError';
-  }
-}
-
-export async function processDailySummaryForEstablishment(
-  establishmentId: string,
-  dateStr: string
-) {
-  const db = getFirestore();
+async function processDailySummaryForEstablishment(establishmentId, dateStr) {
   const estRef = db.collection('establishments').doc(establishmentId);
   const [year, month, day] = dateStr.split('-');
 
-  // BUGFIX: El timezone original usaba UTC ('Z') causando que el día boliviano empezara a las 20:00.
-  // America/La_Paz no tiene horario de verano y es siempre UTC-04:00.
-  // Ajustamos el parser para que el rango coincida exactamente con las 00:00 a 23:59 locales.
   const startOfDay = new Date(`${dateStr}T00:00:00.000-04:00`);
   const endOfDay = new Date(`${dateStr}T23:59:59.999-04:00`);
 
@@ -62,7 +36,7 @@ export async function processDailySummaryForEstablishment(
   }).length;
 
   // 1b. Distribución por canal según fecha operativa (checkInDate)
-  const channels: Record<string, number> = {};
+  const channels = {};
   for (const d of reservationsSnap.docs) {
     const data = d.data();
     if (!data.checkInDate) continue;
@@ -104,8 +78,8 @@ export async function processDailySummaryForEstablishment(
   // 5. Ingresos (pagos completados) registrados en folios durante el día
   let totalRevenue = 0;
   let revenueBOB = 0;
-  const revenueByCurrency: Record<string, number> = {};
-  const paymentMethods: Record<string, number> = {};
+  const revenueByCurrency = {};
+  const paymentMethods = {};
   let paymentsCount = 0;
 
   for (const folioDoc of foliosSnap.docs) {
@@ -115,11 +89,11 @@ export async function processDailySummaryForEstablishment(
       if (p.status === 'completed' && p.createdAt && typeof p.amount === 'number') {
         const pDate = p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt.seconds * 1000);
         if (pDate >= startOfDay && pDate <= endOfDay) {
-          totalRevenue += p.amount; // Los refunds tienen amount negativo, así que se restan automáticamente
-          
+          totalRevenue += p.amount;
+
           const cur = p.currencyCode || 'BOB';
           const receivedAmt = typeof p.receivedAmount === 'number' ? p.receivedAmount : p.amount;
-          
+
           if (!revenueByCurrency[cur]) revenueByCurrency[cur] = 0;
           revenueByCurrency[cur] += receivedAmt;
 
@@ -176,7 +150,7 @@ export async function processDailySummaryForEstablishment(
       occupiedBeds: occupiedBedsCount,
       updatedAt: FieldValue.serverTimestamp(),
     },
-    { merge: true } // Garantiza la idempotencia
+    { merge: true }
   );
 
   return {
@@ -194,25 +168,56 @@ export async function processDailySummaryForEstablishment(
   };
 }
 
-export async function generateDailySummaryOnDemandService(
-  payload: GenerateSummaryPayload,
-  auth: AuthContext
-): Promise<GenerateSummaryResult> {
-  getFirebaseAdmin();
-  const { establishmentId, date } = payload;
+async function runBackfill() {
+  const establishmentId = 'est_hostel_principal';
+  const estRef = db.collection('establishments').doc(establishmentId);
 
-  if (!establishmentId || !date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new SummaryError('Parámetros requeridos: establishmentId y date (formato YYYY-MM-DD).');
+  console.log(`Iniciando auditoría y backfill único para establishment: ${establishmentId}`);
+
+  // 1. Obtener SOLO los dailySummaries que YA existen actualmente
+  const dsSnap = await estRef.collection('dailySummaries').orderBy('__name__', 'asc').get();
+  const existingDates = dsSnap.docs.map((d) => d.id);
+
+  console.log(`Documentos existentes encontrados: ${existingDates.length}`);
+  console.log(`Fechas existentes:`, existingDates);
+
+  // 2. Procesar únicamente las fechas existentes
+  for (const dateStr of existingDates) {
+    process.stdout.write(`Regenerando summary para ${dateStr}... `);
+    const res = await processDailySummaryForEstablishment(establishmentId, dateStr);
+    console.log(
+      `OK (revBOB: ${res.revenueBOB}, occ: ${res.occupancy}%, channels: ${JSON.stringify(res.channels)}, payMethods: ${JSON.stringify(res.paymentMethods)})`
+    );
   }
 
-  if (!auth.roles[establishmentId]) {
-    throw new SummaryError('No tienes permisos.', 403);
-  }
+  // 3. Verificación post-backfill
+  console.log('\n--- VERIFICACIÓN POST-BACKFILL ---');
+  const postSnap = await estRef.collection('dailySummaries').get();
+  let completeCount = 0;
+  let incompleteCount = 0;
 
-  try {
-    const result = await processDailySummaryForEstablishment(establishmentId, date);
-    return { success: true as const, summary: result };
-  } catch (error: any) {
-    throw new SummaryError(`Error al procesar el resumen: ${error.message}`, 500);
-  }
+  postSnap.docs.forEach((doc) => {
+    const data = doc.data();
+    const hasAll =
+      'revenueBOB' in data &&
+      'paymentMethods' in data &&
+      'paymentsCount' in data &&
+      'channels' in data;
+    if (hasAll) {
+      completeCount++;
+    } else {
+      incompleteCount++;
+      console.warn(`Doc ${doc.id} aún carece de campos`);
+    }
+  });
+
+  console.log(`Total summaries: ${postSnap.size}`);
+  console.log(`Summaries con todos los campos v1.13: ${completeCount}`);
+  console.log(`Summaries incompletos: ${incompleteCount}`);
+  console.log(`Resultado final: ${incompleteCount === 0 ? 'PASS' : 'FAIL'}`);
 }
+
+runBackfill().catch((err) => {
+  console.error('Error durante el backfill:', err);
+  process.exit(1);
+});

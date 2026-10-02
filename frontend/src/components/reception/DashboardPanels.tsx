@@ -52,7 +52,12 @@ export function ArrivalsPanel({ todayArrivals, guests, rooms, onCheckInReservati
           <div className="panel-empty">No hay llegadas programadas para hoy.</div>
         ) : (
           todayArrivals.map((res) => {
-            const guestName = getGuestName(res.primaryGuestId, guests)
+            const guest = guests.find((item) => item.id === res.primaryGuestId)
+            const isPendingData = !res.primaryGuestId
+            const guestName = guest
+              ? `${guest.firstName} ${guest.lastName}`
+              : (res.bookingContact?.name || 'Huésped sin asignar')
+
             const roomObj = rooms.find((item) => item.id === res.roomId)
             const isPrivate = roomObj?.type === 'private'
             const roomName = getRoomName(res.roomId, rooms)
@@ -68,16 +73,33 @@ export function ArrivalsPanel({ todayArrivals, guests, rooms, onCheckInReservati
                 ? <>{roomName} · {bedName}</>
                 : <span style={{color: 'var(--coral)'}}><AlertTriangle size={12} style={{display: 'inline', marginRight: '4px', verticalAlign: '-2px'}}/> Sin cama asignada</span>
                 
-            const capacityText = isPrivate
-              ? `(${res.guestCount || 1} huéspedes)`
-              : `(${res.bedIds?.length ?? 1} pers.)`
+            const guestCountNum = res.guestCount ?? (res.bedIds?.length || 1)
+            const capacityText = `(${guestCountNum} ${guestCountNum === 1 ? 'huésped' : 'huéspedes'})`
 
             return (
               <div key={res.id} className="panel-card">
                 <div className="card-left">
                   <span className="card-time">{timeStr}</span>
                   <div className="card-info">
-                    <h4 className="card-guest-name">{isPrivate ? `Titular: ${guestName}` : guestName}</h4>
+                    <h4 className="card-guest-name" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span>{isPrivate ? `Titular: ${guestName}` : guestName}</span>
+                      {isPendingData && (
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '1px 6px',
+                          borderRadius: '10px',
+                          background: '#fef3c7',
+                          color: '#92400e',
+                          border: '1px solid #fde68a'
+                        }}>
+                          <AlertTriangle size={11} /> Datos pendientes
+                        </span>
+                      )}
+                    </h4>
                     <p className="card-location">
                       {locationText}
                       <span style={{color: 'var(--text-light)', marginLeft: '4px'}}>{capacityText}</span>

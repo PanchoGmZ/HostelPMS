@@ -17,6 +17,11 @@ export interface ModifyReservationPayload {
   manualPricePerNight?: number;
   manualTotalAmount?: number;
   specialRateReason?: string;
+  bookingContact?: {
+    name?: string;
+    phone?: string;
+    note?: string;
+  } | null;
 }
 
 export interface ModifyReservationResult {
@@ -44,6 +49,7 @@ export async function modifyReservationService(
     manualPricePerNight,
     manualTotalAmount,
     specialRateReason,
+    bookingContact,
   } = payload;
 
   if (!establishmentId || !reservationId) {
@@ -113,6 +119,23 @@ export async function modifyReservationService(
       // Campos simples
       if (primaryGuestId !== undefined) {
         updates.primaryGuestId = primaryGuestId || null;
+        if (primaryGuestId) {
+          const currentGuestIds = Array.isArray(reservation.guestIds) ? reservation.guestIds : [];
+          if (!currentGuestIds.includes(primaryGuestId)) {
+            updates.guestIds = [primaryGuestId, ...currentGuestIds];
+          }
+        }
+      }
+      if (bookingContact !== undefined) {
+        if (bookingContact === null) {
+          updates.bookingContact = null;
+        } else {
+          updates.bookingContact = {
+            name: bookingContact.name?.trim() || '',
+            phone: bookingContact.phone?.trim() || null,
+            note: bookingContact.note?.trim() || null,
+          };
+        }
       }
       if (guestIds !== undefined) {
         updates.guestIds = Array.isArray(guestIds) ? guestIds.filter(id => typeof id === 'string' && id.trim() !== '') : [];

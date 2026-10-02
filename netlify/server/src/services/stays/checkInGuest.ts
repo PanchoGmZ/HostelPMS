@@ -2,6 +2,7 @@ import { getFirebaseAdmin } from '../../firebase/admin';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { AuthContext } from '../../auth/verifyAuth';
 import { ReservationError } from '../reservations/createReservation';
+import { processDailySummaryForEstablishment } from '../reports/generateDailySummary';
 
 export interface CheckInGuestPayload {
   establishmentId: string;
@@ -37,6 +38,9 @@ export async function checkInGuestService(
   const stayRef = estRef.collection('stays').doc();
   const folioRef = estRef.collection('folios').doc();
 
+  // v1.12: capturar checkInDate de la reserva para detectar retroactividad después de la transacción
+  const retroContext: { checkInSeconds: number | null } = { checkInSeconds: null };
+
   try {
     await db.runTransaction(async (transaction) => {
       const resSnap = await transaction.get(reservationRef);
@@ -59,16 +63,43 @@ export async function checkInGuestService(
         throw new ReservationError('Ya existe una estadía (Check-in realizado) para esta reserva.', 409);
       }
 
+      // Auditar checkInGuest: Exigir un primaryGuestId válido
+      const titularId = reservation.primaryGuestId || (guestIds && guestIds.length > 0 ? guestIds[0] : null);
+      if (!titularId || typeof titularId !== 'string' || titularId.trim() === '') {
+        throw new ReservationError(
+          'No se puede realizar el check-in: la reserva no tiene un huésped titular registrado. Completa los datos del huésped antes de realizar el check-in.',
+          400
+        );
+      }
+
+      // Validar que el titular exista en la base de datos de huéspedes
+      const guestSnap = await transaction.get(estRef.collection('guests').doc(titularId));
+      if (!guestSnap.exists) {
+        throw new ReservationError(
+          'El huésped titular asignado no existe en la base de datos de huéspedes.',
+          400
+        );
+      }
+
+      // v1.12: capturar para regenerar dailySummaries si es retroactivo
+      if (reservation.checkInDate && typeof reservation.checkInDate.seconds === 'number') {
+        retroContext.checkInSeconds = reservation.checkInDate.seconds;
+      }
+
       // Actualizamos el status de la reserva a 'completed' indicando que ya se efectivizó
-      transaction.update(reservationRef, {
+      const reservationUpdate: Record<string, unknown> = {
         status: 'completed',
         updatedAt: FieldValue.serverTimestamp(),
-      });
+      };
+      if (!reservation.primaryGuestId) {
+        reservationUpdate.primaryGuestId = titularId;
+      }
+      transaction.update(reservationRef, reservationUpdate);
 
       transaction.set(stayRef, {
         reservationId: reservationId,
-        primaryGuestId: reservation.primaryGuestId || null,
-        guestIds: guestIds && guestIds.length > 0 ? guestIds : [reservation.primaryGuestId].filter(Boolean),
+        primaryGuestId: titularId,
+        guestIds: guestIds && guestIds.length > 0 ? guestIds : [titularId],
         roomId: reservation.roomId,
         bedIds: reservation.bedIds,
         checkInDate: reservation.checkInDate,
@@ -104,6 +135,51 @@ export async function checkInGuestService(
         updatedAt: FieldValue.serverTimestamp(),
       });
     });
+
+    // v1.12: Regenerar dailySummaries históricos afectados si el check-in es retroactivo.
+    // Se ejecuta con await secuencial — no fire-and-forget.
+    // En Netlify Functions el trabajo asíncrono después de responder puede no completarse.
+    // Cada fecha se regenera de forma independiente con su propio try/catch:
+    // un fallo en un reporte histórico NUNCA revierte una estadía ya confirmada.
+    if (retroContext.checkInSeconds !== null) {
+      const checkInJsDate = new Date(retroContext.checkInSeconds * 1000);
+      // "Hoy" en America/La_Paz (UTC-04:00 sin DST)
+      const boliviaFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/La_Paz',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const todayStr = boliviaFormatter.format(new Date());
+      // checkInDate en formato YYYY-MM-DD usando timezone Bolivia
+      const checkInStr = boliviaFormatter.format(checkInJsDate);
+
+      if (checkInStr < todayStr) {
+        // Construir lista de días históricos afectados: desde checkIn hasta ayer (sin incluir hoy)
+        const datesToRegenerate: string[] = [];
+        const cursor = new Date(`${checkInStr}T12:00:00.000-04:00`);
+        const todayDate = new Date(`${todayStr}T12:00:00.000-04:00`);
+        while (cursor < todayDate) {
+          datesToRegenerate.push(cursor.toISOString().slice(0, 10));
+          cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+
+        // Regenerar awaited, fecha por fecha — errores individuales se loguean sin propagar
+        for (const dateStr of datesToRegenerate) {
+          try {
+            await processDailySummaryForEstablishment(establishmentId, dateStr);
+            console.log(`[v1.12] dailySummary regenerado: ${dateStr} (${establishmentId})`);
+          } catch (summaryErr) {
+            // El check-in ya fue confirmado; no revertir por un error de reporte histórico
+            console.error(`[v1.12] Error regenerando dailySummary ${dateStr} para ${establishmentId}:`, summaryErr);
+          }
+        }
+
+        if (datesToRegenerate.length > 0) {
+          console.log(`[v1.12] Regeneración completada: ${datesToRegenerate.length} día(s) para ${establishmentId}: ${datesToRegenerate[0]} → ${datesToRegenerate[datesToRegenerate.length - 1]}`);
+        }
+      }
+    }
 
     return { success: true as const, stayId: stayRef.id };
   } catch (error: any) {

@@ -47,8 +47,12 @@ export function BedCard({
     detailText = 'Por desinfectar'
   } else if (todayReservation) {
     status = 'reserved'
-    label = 'Reservada (Hoy)'
-    detailText = 'Llegada esperada'
+    const isQuick = !todayReservation.primaryGuestId && !!todayReservation.bookingContact?.name
+    const resName = isQuick
+      ? todayReservation.bookingContact?.name
+      : (guest ? `${guest.firstName} ${guest.lastName}` : 'Reservada (Hoy)')
+    label = resName || 'Reservada (Hoy)'
+    detailText = isQuick ? '⚠️ Datos pendientes' : 'Llegada esperada'
   }
 
   const getStatusIcon = () => {
@@ -80,15 +84,15 @@ export function BedCard({
         <span className="bed-code">{bedDisplayName}</span>
         <span className="bed-badge" data-status={status}>
           {getStatusIcon()}
-          <span className="status-title">{status === 'occupied' ? 'Ocupada' : label}</span>
+          <span className="status-title">{status === 'occupied' ? 'Ocupada' : (status === 'reserved' ? 'Reservada' : label)}</span>
         </span>
       </div>
 
       <div className="bed-card-body">
-        {status === 'occupied' ? (
+        {status === 'occupied' || status === 'reserved' ? (
           <div className="guest-info">
             <strong className="guest-name" title={label}>{label}</strong>
-            <span className={`guest-balance ${folio && folio.balance > 0 ? 'has-debt' : 'paid'}`}>
+            <span className={`guest-balance ${status === 'reserved' ? (todayReservation?.bookingContact && !todayReservation.primaryGuestId ? 'has-debt' : 'paid') : (folio && folio.balance > 0 ? 'has-debt' : 'paid')}`}>
               {detailText}
             </span>
           </div>

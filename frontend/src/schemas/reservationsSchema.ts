@@ -1,7 +1,12 @@
 import { z } from 'zod'
 
 export const createReservationSchema = z.object({
-  guestId: z.string().min(1, 'Debes seleccionar un huésped'),
+  guestId: z.string().optional(),
+  bookingContact: z.object({
+    name: z.string().min(1, 'El nombre de referencia es obligatorio'),
+    phone: z.string().optional(),
+    note: z.string().optional(),
+  }).optional(),
   roomId: z.string().min(1, 'Debes seleccionar una habitación'),
   saleMode: z.enum(['bed', 'full_room']),
   bedIds: z.array(z.string()).min(1, 'Debes seleccionar al menos una cama'),
@@ -20,6 +25,16 @@ export const createReservationSchema = z.object({
   {
     message: 'La fecha de salida debe ser posterior a la fecha de entrada',
     path: ['checkOut'],
+  }
+).refine(
+  (data) => {
+    const hasGuest = typeof data.guestId === 'string' && data.guestId.trim().length > 0
+    const hasContact = typeof data.bookingContact?.name === 'string' && data.bookingContact.name.trim().length > 0
+    return hasGuest || hasContact
+  },
+  {
+    message: 'Debes seleccionar un huésped o ingresar un nombre de referencia para reserva rápida',
+    path: ['guestId'],
   }
 )
 

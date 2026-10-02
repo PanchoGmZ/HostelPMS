@@ -1,5 +1,45 @@
 # Changelog — Pata y Perro PMS
 
+## v1.14
+Fecha: 2026-10-02
+
+- Nueva visualización gráfica de camas.
+- Estados de disponibilidad identificables por color y etiqueta.
+- Habitaciones y Dashboard usan el mismo mapa visual.
+- Mejor visualización de habitaciones privadas completas.
+- Gestión de camas más compacta e intuitiva.
+
+## v1.13
+Fecha: 2026-10-02
+
+- Rediseño completo de Reportes.
+- Nuevas métricas operativas.
+- Gráficos reales de ingresos y ocupación.
+- Pagos agrupados por moneda.
+- Distribución por canal y método de pago.
+- Ocupación por habitación.
+- Métricas de nacionalidad y duración de estadía.
+- Exportación PDF actualizada.
+
+## v1.12
+Fecha: 2026-09-30
+
+- Registro retroactivo de ingresos (check-in / walk-in).
+- Walk-in permite seleccionar fecha real de ingreso anterior a hoy.
+- Validación histórica de disponibilidad server-side para todo el rango retroactivo.
+- Cobros y noches calculados desde la fecha real de ingreso.
+- Reportes respetan fecha real (checkInDate) sin manipular createdAt.
+- Auditoría: createdAt refleja cuándo se cargó al PMS, checkInDate la fecha real.
+- Check-in de reservas existentes preserva la fecha original de la reserva.
+- Indicadores visuales claros para operaciones retroactivas.
+
+## v1.11
+Fecha: 2026-09-29
+
+- Reserva rápida sin ficha completa.
+- Datos del huésped pueden completarse al check-in.
+- Vinculación posterior con huésped registrado.
+
 ## v1.10
 Fecha: 2026-09-24
 
