@@ -581,7 +581,7 @@ function FolioDetailModal({
             )}
           </div>
 
-          {/* Resumen Final */}
+          {/* Resumen Final v1.16 */}
           <div
             style={{
               padding: '12px',
@@ -594,17 +594,21 @@ function FolioDetailModal({
               alignItems: 'center',
             }}
           >
-            <div>
-              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
-                {folio.balance < 0 ? 'Saldo pendiente:' : folio.balance > 0 ? 'Saldo a favor:' : 'Saldo final:'}
+            <div style={{ fontSize: '12px', color: 'var(--muted)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div>Hospedaje: <strong>{(folio.charges || []).filter(c => c.productId === null || c.description.toLowerCase().includes('hospedaje')).reduce((acc, c) => acc + c.amount, 0)} {folio.currency}</strong></div>
+              <div>Consumos: <strong>{(folio.charges || []).filter(c => c.productId !== null && !c.description.toLowerCase().includes('hospedaje')).reduce((acc, c) => acc + c.amount, 0)} {folio.currency}</strong></div>
+              <div style={{ borderTop: '1px solid rgba(0,0,0,0.1)', marginTop: '4px', paddingTop: '4px' }}>
+                Total Cargos: <strong>{folio.totalCharges} {folio.currency}</strong>
+              </div>
+              <div>Pagado: <strong>{folio.totalPaid} {folio.currency}</strong></div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <span style={{ fontSize: '11px', color: 'var(--muted)', textTransform: 'uppercase' }}>
+                {folio.balance < 0 ? 'Pendiente' : folio.balance > 0 ? 'Saldo a favor' : 'Al día'}
               </span>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: folio.balance < 0 ? '#d97706' : (folio.balance > 0 ? '#1e40af' : '#1e6631') }}>
+              <div style={{ fontSize: '20px', fontWeight: 800, color: folio.balance < 0 ? '#d97706' : (folio.balance > 0 ? '#1e40af' : '#1e6631') }}>
                 {Math.abs(folio.balance ?? 0)} {folio.currency}
               </div>
-            </div>
-            <div style={{ fontSize: '12px', textAlign: 'right', color: 'var(--muted)' }}>
-              <div>Total Cargos: {folio.totalCharges} {folio.currency}</div>
-              <div>Total Pagado: {folio.totalPaid} {folio.currency}</div>
             </div>
           </div>
         </div>

@@ -4,6 +4,9 @@ import { checkInGuest } from '../../services/stays/staysService'
 import { modifyReservation } from '../../services/reservations/reservationsService'
 import { saveGuest, searchGuests } from '../../services/guests/guestsService'
 import { GuestModal, type Draft, emptyDraft } from '../guests/GuestModal'
+import { MultiGuestSection, createEmptySlot, createExistingSlot } from '../guests/MultiGuestSection'
+import type { GuestSlot } from '../guests/MultiGuestSection'
+import { cleanDraft } from '../guests/GuestInlineForm'
 import type { Reservation } from '../../types/reservations'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
@@ -80,6 +83,38 @@ export function CheckInModal({
   const [searchSelectedGuestId, setSearchSelectedGuestId] = useState<string>(localGuests[0]?.id ?? '')
   const [showNewGuestModal, setShowNewGuestModal] = useState(false)
   const [newGuestDraft, setNewGuestDraft] = useState<{ draft: Draft }>({ draft: emptyDraft })
+
+  // v1.15: Multi-guest slots para check-in con múltiples personas
+  const multiGuestCount = currentRes?.guestCount ?? 1
+  const [multiGuestSlots, setMultiGuestSlots] = useState<GuestSlot[]>([])
+  const [showMultiGuest, setShowMultiGuest] = useState(false)
+
+  // v1.15: Inicializar slots cuando cambia la reserva o los huéspedes
+  useEffect(() => {
+    if (!currentRes) return
+    const count = currentRes.guestCount ?? 1
+    if (count <= 1) {
+      setShowMultiGuest(false)
+      setMultiGuestSlots([])
+      return
+    }
+
+    // Construir slots desde los guestIds existentes de la reserva
+    const slots: GuestSlot[] = []
+    // Slot 0 = titular (se maneja por separado)
+    // Slots 1..n = acompañantes
+    const existingCompanionIds = (currentRes.guestIds || []).filter(
+      id => id !== currentRes.primaryGuestId
+    )
+    for (let i = 0; i < count - 1; i++) {
+      if (i < existingCompanionIds.length) {
+        slots.push(createExistingSlot(existingCompanionIds[i]))
+      } else {
+        slots.push(createEmptySlot())
+      }
+    }
+    setMultiGuestSlots(slots)
+  }, [currentRes?.id, currentRes?.guestCount])
 
   // Keep guestId in sync if currentRes changes
   useEffect(() => {
@@ -249,12 +284,45 @@ export function CheckInModal({
       return
     }
 
+    // v1.15: Validar slots de acompañantes que tengan datos nuevos incompletos
+    for (let i = 0; i < multiGuestSlots.length; i++) {
+      const slot = multiGuestSlots[i]
+      if (slot.mode === 'new' && !slot.validated && slot.draft.firstName) {
+        setFormError(`Acompañante ${i + 1}: completa todos los campos obligatorios.`)
+        return
+      }
+    }
+
     setSubmitting(true)
     try {
+      // v1.15: Guardar acompañantes nuevos y recolectar IDs
+      const companionIds: string[] = []
+      for (const slot of multiGuestSlots) {
+        if (slot.mode === 'empty') continue
+        if (slot.mode === 'existing' && slot.existingGuestId) {
+          if (slot.existingGuestId !== effectiveTitular) {
+            companionIds.push(slot.existingGuestId)
+          }
+        } else if (slot.mode === 'new' && slot.validated) {
+          const cleaned = cleanDraft(slot.draft)
+          const newCompanionId = await saveGuest(establishmentId, cleaned)
+          companionIds.push(newCompanionId)
+        }
+      }
+
+      // v1.15: Si hay acompañantes, actualizar la reserva con los guestIds
+      if (companionIds.length > 0) {
+        await modifyReservation({
+          establishmentId,
+          reservationId: currentRes.id,
+          guestIds: companionIds,
+        })
+      }
+
       await checkInGuest({
         establishmentId,
         reservationId: currentRes.id,
-        guestIds: [effectiveTitular],
+        guestIds: [effectiveTitular, ...companionIds],
         roomId: currentRes.roomId,
         bedIds: currentRes.bedIds,
         expectedCheckOutDate: expectedCheckOut,
@@ -262,7 +330,7 @@ export function CheckInModal({
         documentVerified,
       })
 
-      onSuccess(`Check-in completado exitosamente para ${titularGuest ? `${titularGuest.firstName} ${titularGuest.lastName}` : 'el huésped'}.`)
+      onSuccess(`Check-in completado exitosamente para ${titularGuest ? `${titularGuest.firstName} ${titularGuest.lastName}` : 'el huésped'}${companionIds.length > 0 ? ` y ${companionIds.length} acompañante(s)` : ''}.`)
       onClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al procesar el check-in'
@@ -277,7 +345,7 @@ export function CheckInModal({
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
         className="modal-form"
-        style={{ maxWidth: '520px', width: '90%' }}
+        style={{ maxWidth: '560px', width: '90%', maxHeight: '92vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmitCheckIn}
       >
@@ -528,6 +596,45 @@ export function CheckInModal({
                   Esta reserva tiene fecha de ingreso anterior a hoy.
                   Se registrará con la fecha original: {formatDateDisplay(currentRes?.checkInDate)}.
                 </div>
+              </div>
+            )}
+
+            {/* v1.15: Sección multi-guest para acompañantes */}
+            {multiGuestCount > 1 && (
+              <div style={{ marginBottom: '12px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowMultiGuest(!showMultiGuest)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    width: '100%',
+                    padding: '8px 10px',
+                    background: showMultiGuest ? '#f0f9ff' : 'var(--paper)',
+                    border: `1px solid ${showMultiGuest ? '#bae6fd' : 'var(--line)'}`,
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    color: 'var(--ink)',
+                    marginBottom: showMultiGuest ? '10px' : '0',
+                  }}
+                >
+                  <UserPlus size={14} />
+                  Registrar acompañantes ({multiGuestSlots.filter(s => s.mode !== 'empty').length}/{multiGuestCount - 1} opcionales)
+                </button>
+                {showMultiGuest && (
+                  <MultiGuestSection
+                    guestCount={multiGuestCount - 1}
+                    slots={multiGuestSlots}
+                    onSlotsChange={setMultiGuestSlots}
+                    existingGuests={localGuests}
+                    usedGuestIds={guestId ? [guestId] : []}
+                    disabled={submitting}
+                    titularIndex={-1}
+                  />
+                )}
               </div>
             )}
 

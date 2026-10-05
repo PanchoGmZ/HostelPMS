@@ -1,5 +1,27 @@
 # Changelog — Pata y Perro PMS
 
+## v1.16
+Fecha: 2026-10-05
+
+- Hospedaje registrado correctamente como cargo de Folio.
+- Saldo pendiente incluye alojamiento y consumos.
+- Checkout utiliza deuda completa.
+- Reportes separan facturación de cobros.
+- Nuevas métricas de hospedaje y deuda.
+- Herramientas seguras de auditoría/backfill histórico.
+
+## v1.15
+Fecha: 2026-10-05
+
+- Registro múltiple de huéspedes dentro de Reservas.
+- Registro múltiple de huéspedes en Walk-in.
+- Acompañantes pueden registrarse sin abandonar el flujo.
+- Reserva rápida permite completar grupos durante Check-in.
+- Componente reutilizable GuestInlineForm (sin duplicar schemas ni reglas).
+- MultiGuestSection con acordeones para registro de grupos.
+- Buscar existente o registrar nuevo por cada persona del grupo.
+- Validaciones compartidas entre GuestModal y formularios inline.
+
 ## v1.14
 Fecha: 2026-10-02
 

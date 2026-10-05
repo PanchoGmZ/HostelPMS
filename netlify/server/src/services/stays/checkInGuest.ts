@@ -115,15 +115,37 @@ export async function checkInGuestService(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      const reservationData = reservation;
+      const lodgingAmount = typeof reservation.totalAmount === 'number' ? reservation.totalAmount : 0;
+      const lodgingChargeId = db.collection('dummy').doc().id;
+      // Calculate nights safely using seconds difference
+      let nights = 1;
+      if (reservation.checkInDate && reservation.checkOutDate) {
+        nights = Math.max(1, Math.round((reservation.checkOutDate.seconds - reservation.checkInDate.seconds) / 86400));
+      }
+
+      const lodgingCharge = {
+        id: lodgingChargeId,
+        description: `Hospedaje · ${nights} noche(s)`,
+        quantity: 1,
+        unitPrice: lodgingAmount,
+        amount: lodgingAmount,
+        status: 'pending',
+        productId: null,
+        serviceDate: reservation.checkInDate, // Fecha operativa para reportes históricos/retroactivos
+        createdAt: FieldValue.serverTimestamp(),
+      };
+
+      const initialTotalPaid = deposit || 0;
+      const initialBalance = initialTotalPaid - lodgingAmount; // < 0 = debt, > 0 = credit
+
       transaction.set(folioRef, {
         stayId: stayRef.id,
-        currency: reservationData.currency || 'BOB',
-        totalCharges: 0,
-        totalPaid: deposit || 0,
-        balance: -(deposit || 0),
+        currency: reservation.currency || 'BOB',
+        totalCharges: lodgingAmount,
+        totalPaid: initialTotalPaid,
+        balance: initialBalance,
         status: 'open',
-        charges: [],
+        charges: [lodgingCharge],
         payments: deposit ? [{ 
           id: db.collection('dummy').doc().id, 
           amount: deposit, 

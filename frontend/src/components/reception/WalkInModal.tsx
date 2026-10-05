@@ -7,6 +7,9 @@ import type { Bed, Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 import type { Reservation } from '../../types/reservations'
 import type { Stay } from '../../types/stays'
+import { MultiGuestSection, createEmptySlot } from '../guests/MultiGuestSection'
+import type { GuestSlot } from '../guests/MultiGuestSection'
+import { cleanDraft, countries } from '../guests/GuestInlineForm'
 
 interface WalkInModalProps {
   establishmentId: string
@@ -27,8 +30,6 @@ function toLocalDateString(date: Date): string {
   const dd = String(date.getDate()).padStart(2, '0')
   return `${yyyy}-${mm}-${dd}`
 }
-
-const countries = [ "Afganistán", "Albania", "Alemania", "Andorra", "Angola", "Antigua y Barbuda", "Arabia Saudita", "Argelia", "Argentina", "Armenia", "Australia", "Austria", "Azerbaiyán", "Bahamas", "Bangladés", "Barbados", "Baréin", "Bélgica", "Belice", "Benín", "Bielorrusia", "Birmania", "Bolivia", "Bosnia y Herzegovina", "Botsuana", "Brasil", "Brunéi", "Bulgaria", "Burkina Faso", "Burundi", "Bután", "Cabo Verde", "Camboya", "Camerún", "Canadá", "Catar", "Chad", "Chile", "China", "Chipre", "Ciudad del Vaticano", "Colombia", "Comoras", "Corea del Norte", "Corea del Sur", "Costa de Marfil", "Costa Rica", "Croacia", "Cuba", "Dinamarca", "Dominica", "Ecuador", "Egipto", "El Salvador", "Emiratos Árabes Unidos", "Eritrea", "Eslovaquia", "Eslovenia", "España", "Estados Unidos", "Estonia", "Etiopía", "Filipinas", "Finlandia", "Fiyi", "Francia", "Gabón", "Gambia", "Georgia", "Ghana", "Granada", "Grecia", "Guatemala", "Guyana", "Guinea", "Guinea ecuatorial", "Guinea-Bisáu", "Haití", "Honduras", "Hungría", "India", "Indonesia", "Irak", "Irán", "Irlanda", "Islandia", "Islas Marshall", "Islas Salomón", "Israel", "Italia", "Jamaica", "Japón", "Jordania", "Kazajistán", "Kenia", "Kirguistán", "Kiribati", "Kuwait", "Laos", "Lesoto", "Letonia", "Líbano", "Liberia", "Libia", "Liechtenstein", "Lituania", "Luxemburgo", "Madagascar", "Malasia", "Malaui", "Maldivas", "Malí", "Malta", "Marruecos", "Mauricio", "Mauritania", "México", "Micronesia", "Moldavia", "Mónaco", "Mongolia", "Montenegro", "Mozambique", "Namibia", "Nauru", "Nepal", "Nicaragua", "Níger", "Nigeria", "Noruega", "Nueva Zelanda", "Omán", "Países Bajos", "Pakistán", "Palaos", "Panamá", "Papúa Nueva Guinea", "Paraguay", "Perú", "Polonia", "Portugal", "Reino Unido", "República Centroafricana", "República Checa", "República del Congo", "República Democrática del Congo", "República Dominicana", "Ruanda", "Rumanía", "Rusia", "Samoa", "San Cristóbal y Nieves", "San Marino", "San Vicente y las Granadinas", "Santa Lucía", "Santo Tomé y Príncipe", "Senegal", "Serbia", "Seychelles", "Sierra Leona", "Singapur", "Siria", "Somalia", "Sri Lanka", "Suazilandia", "Sudáfrica", "Sudán", "Sudán del Sur", "Suecia", "Suiza", "Surinam", "Tailandia", "Tanzania", "Tayikistán", "Timor Oriental", "Togo", "Tonga", "Trinidad y Tobago", "Túnez", "Turkmenistán", "Turquía", "Tuvalu", "Ucrania", "Uganda", "Uruguay", "Uzbekistán", "Vanuatu", "Venezuela", "Vietnam", "Yemen", "Yibuti", "Zambia", "Zimbabue" ]
 
 const SPECIAL_RATE_REASONS = ['Voluntariado', 'Cortesía', 'Acuerdo especial', 'Otro']
 
@@ -60,7 +61,7 @@ export function WalkInModal({
   const [selectedGuestId, setSelectedGuestId] = useState(existingGuests[0]?.id ?? '')
   const [guestSearch, setGuestSearch] = useState('')
 
-  // New guest form
+  // New guest form (titular only in single mode)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [docType, setDocType] = useState<string>('ci')
@@ -79,7 +80,9 @@ export function WalkInModal({
   const [nights, setNights] = useState<number | ''>(1)
   const [deposit, setDeposit] = useState(0)
   const [guestCount, setGuestCount] = useState<number>(1)
-  const [guestIds, setGuestIds] = useState<string[]>([])
+
+  // v1.15: Multi-guest slots (reemplaza guestIds array de strings)
+  const [companionSlots, setCompanionSlots] = useState<GuestSlot[]>([])
 
   // v1.7: pricingMode + tarifa especial
   const [pricingMode, setPricingMode] = useState<'standard' | 'manual'>('standard')
@@ -156,6 +159,17 @@ export function WalkInModal({
     }
   }, [effectiveBedObj, selectedRoomObj, isPrivate, guestCount])
 
+  // v1.15: Sincronizar companionSlots cuando cambia guestCount
+  useEffect(() => {
+    const companionCount = Math.max(0, guestCount - 1)
+    setCompanionSlots(prev => {
+      if (companionCount > prev.length) {
+        return [...prev, ...Array(companionCount - prev.length).fill(null).map(() => createEmptySlot())]
+      }
+      return prev.slice(0, companionCount)
+    })
+  }, [guestCount])
+
   // El precio por noche efectivo para el total estimado
   const effectivePricePerNight = pricingMode === 'manual' ? manualPricePerNight : standardPricePerNight
 
@@ -229,6 +243,17 @@ export function WalkInModal({
       }
     }
 
+    // v1.15: Validar slots de acompañantes que tengan datos nuevos incompletos
+    for (let i = 0; i < companionSlots.length; i++) {
+      const slot = companionSlots[i]
+      if (slot.mode === 'new' && !slot.validated) {
+        if (slot.draft.firstName) {
+          setFormError(`Acompañante ${i + 1}: completa todos los campos obligatorios.`)
+          return
+        }
+      }
+    }
+
     setSubmitting(true)
     try {
       // 1. If new guest, save to Firestore and get ID properly!
@@ -252,6 +277,21 @@ export function WalkInModal({
             notes: notes.trim() || null,
           }
         )
+      }
+
+      // v1.15: Guardar acompañantes nuevos y recolectar IDs
+      const companionGuestIds: string[] = []
+      for (const slot of companionSlots) {
+        if (slot.mode === 'empty') continue
+        if (slot.mode === 'existing' && slot.existingGuestId) {
+          if (slot.existingGuestId !== finalGuestId) {
+            companionGuestIds.push(slot.existingGuestId)
+          }
+        } else if (slot.mode === 'new' && slot.validated) {
+          const cleaned = cleanDraft(slot.draft)
+          const newCompanionId = await saveGuest(establishmentId, cleaned)
+          companionGuestIds.push(newCompanionId)
+        }
       }
 
       // 2. Build dates array for pricePerNight (v1.12: desde checkInDateStr)
@@ -291,7 +331,8 @@ export function WalkInModal({
         channel: 'direct',
         // v1.7: guestCount siempre número, nunca undefined
         guestCount: resolvedGuestCount,
-        guestIds: isPrivate ? guestIds.filter(id => id.trim() !== '') : undefined,
+        // v1.15: usar companionGuestIds en lugar de dropdown IDs
+        guestIds: isPrivate ? companionGuestIds : undefined,
         // v1.7: pricingMode y precio manual
         pricingMode,
         ...(pricingMode === 'manual' ? {
@@ -308,7 +349,7 @@ export function WalkInModal({
       await checkInGuest({
         establishmentId,
         reservationId: resResult.reservationId,
-        guestIds: isPrivate ? [finalGuestId, ...guestIds.filter(id => id.trim() !== '')] : [finalGuestId],
+        guestIds: isPrivate ? [finalGuestId, ...companionGuestIds] : [finalGuestId],
         roomId: selectedRoomObj.id,
         bedIds: effectiveBedIds,
         expectedCheckOutDate: checkOutDateStr,
@@ -375,7 +416,7 @@ export function WalkInModal({
         {!isNewGuest ? (
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '13px', marginBottom: '5px' }}>
-              Buscar o seleccionar huésped:
+              Buscar o seleccionar huésped titular:
             </label>
             <input
               type="text"
@@ -445,12 +486,12 @@ export function WalkInModal({
               <label>Nacionalidad</label>
               <input
                 type="text"
-                list="countries"
+                list="countries-walkin"
                 value={nationality}
                 onChange={(e) => setNationality(e.target.value)}
                 placeholder="Ej. Boliviana"
               />
-              <datalist id="countries">
+              <datalist id="countries-walkin">
                 {countries.map(c => <option key={c} value={c} />)}
               </datalist>
             </div>
@@ -575,7 +616,7 @@ export function WalkInModal({
                 setSelectedRoomId(e.target.value)
                 setSelectedBedId('')
                 setGuestCount(1)
-                setGuestIds([])
+                setCompanionSlots([])
               }}
               required
             >
@@ -613,52 +654,27 @@ export function WalkInModal({
                   <button type="button" className="secondary-button compact-button" onClick={() => setGuestCount((c) => Math.min(selectedRoomObj.maxGuests || 99, c + 1))} style={{ padding: '4px 8px' }}>+</button>
                 </div>
               </label>
-              
-              {guestIds.map((companionId, idx) => (
-                <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <select
-                    value={companionId}
-                    onChange={(e) => {
-                      const newIds = [...guestIds]
-                      newIds[idx] = e.target.value
-                      setGuestIds(newIds)
-                    }}
-                    style={{ flex: 1, margin: 0, fontSize: 12, padding: '4px 8px' }}
-                  >
-                    <option value="">Acompañante...</option>
-                    {filteredGuests.map((g) => (
-                      <option key={g.id} value={g.id} disabled={g.id === selectedGuestId || guestIds.includes(g.id)}>
-                        {g.firstName} {g.lastName}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const newIds = [...guestIds]
-                      newIds.splice(idx, 1)
-                      setGuestIds(newIds)
-                    }}
-                    style={{ background: 'none', border: 'none', color: 'var(--error)', cursor: 'pointer', padding: 4 }}
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-              
-              {guestIds.length < guestCount - 1 && (
-                <button
-                  type="button"
-                  className="secondary-button compact-button"
-                  onClick={() => setGuestIds([...guestIds, ''])}
-                  style={{ alignSelf: 'flex-start', marginTop: 4 }}
-                >
-                  + Añadir acompañante
-                </button>
-              )}
             </div>
           )}
         </div>
+
+        {/* v1.15: Sección de acompañantes inline con acordeones */}
+        {isPrivate && guestCount > 1 && (
+          <div style={{ marginBottom: '14px' }}>
+            <MultiGuestSection
+              guestCount={guestCount - 1}
+              slots={companionSlots}
+              onSlotsChange={setCompanionSlots}
+              existingGuests={existingGuests}
+              usedGuestIds={selectedGuestId ? [selectedGuestId] : []}
+              disabled={submitting}
+              titularIndex={-1}
+            />
+            <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }}>
+              El titular ya fue seleccionado arriba. Aquí se registran los acompañantes (opcionales).
+            </div>
+          </div>
+        )}
 
         {/* Noches y Depósito */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>

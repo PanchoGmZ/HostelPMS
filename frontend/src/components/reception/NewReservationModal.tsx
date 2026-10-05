@@ -5,6 +5,9 @@ import type { Bed, Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 import { GuestModal, type Draft, emptyDraft } from '../guests/GuestModal'
 import { saveGuest, searchGuests } from '../../services/guests/guestsService'
+import { MultiGuestSection, createEmptySlot, createExistingSlot } from '../guests/MultiGuestSection'
+import type { GuestSlot } from '../guests/MultiGuestSection'
+import { validateDraft, cleanDraft } from '../guests/GuestInlineForm'
 
 interface NewReservationModalProps {
   establishmentId: string
@@ -54,6 +57,10 @@ export function NewReservationModal({
   const [quickGuestCount, setQuickGuestCount] = useState<number>(1)
   const [quickNote, setQuickNote] = useState('')
 
+  // v1.15: Multi-guest state (for 'registered'/'new' modes)
+  const [registeredGuestCount, setRegisteredGuestCount] = useState<number>(1)
+  const [guestSlots, setGuestSlots] = useState<GuestSlot[]>([createEmptySlot()])
+
   const [guestId, setGuestId] = useState(localGuests[0]?.id ?? '')
   const [guestSearch, setGuestSearch] = useState('')
   const [roomId, setRoomId] = useState(initialRoom?.id ?? rooms[0]?.id ?? '')
@@ -68,6 +75,7 @@ export function NewReservationModal({
   const [agreedTotal, setAgreedTotal] = useState<number>(0)
 
   const selectedRoom = useMemo(() => rooms.find((r) => r.id === roomId), [rooms, roomId])
+  const isPrivate = selectedRoom?.type === 'private'
 
   // Available beds in room
   const availableBeds = useMemo(() => {
@@ -98,6 +106,26 @@ export function NewReservationModal({
   const pricePerNightNumber = selectedBed?.basePriceBed ?? selectedRoom?.basePriceRoom ?? 50
   const estimatedTotal = nights * pricePerNightNumber
 
+  // v1.15: El guestCount efectivo para el modo registrado
+  const effectiveGuestCount = guestMode === 'quick' ? quickGuestCount : registeredGuestCount
+
+  // v1.15: Sincronizar slots cuando cambia registeredGuestCount
+  const handleRegisteredGuestCountChange = (count: number) => {
+    const clamped = Math.max(1, count)
+    setRegisteredGuestCount(clamped)
+    setGuestSlots(prev => {
+      const next = [...prev]
+      // Si estamos expandiendo y el titular estaba vacío, llenarlo con el guestId actual
+      if (clamped > 1 && prev.length === 1 && next[0].mode === 'empty' && guestId) {
+        next[0] = createExistingSlot(guestId)
+      }
+      if (clamped > prev.length) {
+        return [...next, ...Array(clamped - next.length).fill(null).map(() => createEmptySlot())]
+      }
+      return next.slice(0, clamped)
+    })
+  }
+
   const handleSaveGuest = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setSubmitting(true)
@@ -106,6 +134,14 @@ export function NewReservationModal({
       const updatedList = await searchGuests(establishmentId, '')
       setLocalGuests(updatedList)
       setGuestId(newId)
+      // v1.15: Si estamos en modo multi-guest, poner el nuevo en el slot titular
+      if (registeredGuestCount > 1) {
+        setGuestSlots(prev => {
+          const next = [...prev]
+          next[0] = createExistingSlot(newId)
+          return next
+        })
+      }
       setGuestMode('registered')
       setShowNewGuestModal(false)
       setNewGuestDraft({ draft: emptyDraft })
@@ -130,9 +166,33 @@ export function NewReservationModal({
         return
       }
     } else {
-      if (!guestId) {
-        setFormError('Debes seleccionar un huésped para la reserva.')
-        return
+      // v1.15: Multi-guest validation
+      if (registeredGuestCount === 1) {
+        // Modo single — comportamiento original
+        if (!guestId) {
+          setFormError('Debes seleccionar un huésped para la reserva.')
+          return
+        }
+      } else {
+        // Modo multi — al menos el titular debe estar completo
+        const titularSlot = guestSlots[0]
+        if (!titularSlot || (titularSlot.mode === 'empty') ||
+            (titularSlot.mode === 'existing' && !titularSlot.existingGuestId) ||
+            (titularSlot.mode === 'new' && !titularSlot.validated)) {
+          setFormError('El huésped titular (Huésped 1) es obligatorio.')
+          return
+        }
+        // Validar que nuevos huéspedes tengan datos completos
+        for (let i = 0; i < guestSlots.length; i++) {
+          const slot = guestSlots[i]
+          if (slot.mode === 'new' && !slot.validated) {
+            const errs = validateDraft(slot.draft)
+            if (Object.keys(errs).length > 0) {
+              setFormError(`Huésped ${i + 1}: completa todos los campos obligatorios.`)
+              return
+            }
+          }
+        }
       }
     }
 
@@ -155,7 +215,6 @@ export function NewReservationModal({
       dates.push(d.toISOString().slice(0, 10))
     }
 
-    const isPrivate = selectedRoom?.type === 'private'
     const effectiveBedIds = isPrivate && availableBeds.length > 0 ? availableBeds.map(b => b.id) : [effectiveBedId]
     const saleMode: 'bed' | 'full_room' = isPrivate ? 'full_room' : 'bed'
 
@@ -164,43 +223,77 @@ export function NewReservationModal({
       pricePerNight[bId] = Object.fromEntries(dates.map((d) => [d, pricePerNightNumber]))
     }
 
-    const payload: Parameters<typeof createReservation>[0] = {
-      establishmentId,
-      roomId,
-      bedIds: effectiveBedIds,
-      saleMode,
-      checkIn,
-      checkOut,
-      pricePerNight,
-      channel,
-      guestCount: guestMode === 'quick' ? quickGuestCount : 1,
-      ...(guestMode === 'quick'
-        ? {
-            bookingContact: {
-              name: quickName.trim(),
-              phone: quickPhone.trim() || undefined,
-              note: quickNote.trim() || undefined,
-            },
-          }
-        : {
-            guestId,
-          }),
-    }
-
-    if (useAgreedPrice) {
-      payload.pricingMode = 'manual'
-      payload.manualTotalAmount = agreedTotal
-      payload.specialRateReason = 'Precio negociado / acordado en recepción'
-    }
-
     setSubmitting(true)
     try {
+      // v1.15: Guardar huéspedes nuevos de los slots antes de crear la reserva
+      let primaryGuestId: string | undefined
+      const companionIds: string[] = []
+
+      if (guestMode !== 'quick' && registeredGuestCount > 1) {
+        // Procesar cada slot
+        for (let i = 0; i < guestSlots.length; i++) {
+          const slot = guestSlots[i]
+          if (slot.mode === 'empty') continue
+
+          let slotGuestId: string | null = null
+
+          if (slot.mode === 'existing') {
+            slotGuestId = slot.existingGuestId
+          } else if (slot.mode === 'new' && slot.validated) {
+            const cleaned = cleanDraft(slot.draft)
+            slotGuestId = await saveGuest(establishmentId, cleaned)
+          }
+
+          if (slotGuestId) {
+            if (i === 0) {
+              primaryGuestId = slotGuestId
+            } else {
+              if (slotGuestId !== primaryGuestId) {
+                companionIds.push(slotGuestId)
+              }
+            }
+          }
+        }
+      } else if (guestMode !== 'quick') {
+        primaryGuestId = guestId
+      }
+
+      const payload: Parameters<typeof createReservation>[0] = {
+        establishmentId,
+        roomId,
+        bedIds: effectiveBedIds,
+        saleMode,
+        checkIn,
+        checkOut,
+        pricePerNight,
+        channel,
+        guestCount: effectiveGuestCount,
+        ...(guestMode === 'quick'
+          ? {
+              bookingContact: {
+                name: quickName.trim(),
+                phone: quickPhone.trim() || undefined,
+                note: quickNote.trim() || undefined,
+              },
+            }
+          : {
+              guestId: primaryGuestId,
+              ...(companionIds.length > 0 ? { guestIds: companionIds } : {}),
+            }),
+      }
+
+      if (useAgreedPrice) {
+        payload.pricingMode = 'manual'
+        payload.manualTotalAmount = agreedTotal
+        payload.specialRateReason = 'Precio negociado / acordado en recepción'
+      }
+
       await createReservation(payload)
 
       onSuccess(
         guestMode === 'quick'
           ? `Reserva rápida confirmada para ${quickName.trim()} (${quickGuestCount} pers.). Datos pendientes al check-in.`
-          : 'Reserva creada y confirmada exitosamente.'
+          : `Reserva creada y confirmada exitosamente${companionIds.length > 0 ? ` con ${companionIds.length + 1} huéspedes` : ''}.`
       )
       onClose()
     } catch (err: unknown) {
@@ -216,7 +309,7 @@ export function NewReservationModal({
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
         className="modal-form"
-        style={{ maxWidth: '520px' }}
+        style={{ maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
@@ -329,7 +422,7 @@ export function NewReservationModal({
             </div>
           )}
 
-          {guestMode === 'registered' && (
+          {guestMode === 'registered' && registeredGuestCount === 1 && (
             <div>
               <label style={{ fontSize: '12px', marginBottom: '4px' }}>Seleccionar Huésped Registrado:</label>
               <input
@@ -349,6 +442,17 @@ export function NewReservationModal({
             </div>
           )}
 
+          {/* v1.15: Multi-guest inline cuando registeredGuestCount > 1 */}
+          {guestMode === 'registered' && registeredGuestCount > 1 && (
+            <MultiGuestSection
+              guestCount={registeredGuestCount}
+              slots={guestSlots}
+              onSlotsChange={setGuestSlots}
+              existingGuests={localGuests}
+              disabled={submitting}
+            />
+          )}
+
           {guestMode === 'new' && (
             <div style={{ fontSize: '13px', color: 'var(--muted)' }}>
               {localGuests.find(g => g.id === guestId) ? (
@@ -356,6 +460,20 @@ export function NewReservationModal({
               ) : (
                 <span>Haz clic en "Nuevo huésped" para registrar uno con ficha completa.</span>
               )}
+            </div>
+          )}
+
+          {/* v1.15: Cantidad de personas para modos no-quick */}
+          {guestMode !== 'quick' && (isPrivate || true) && (
+            <div style={{ marginTop: '10px', display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Cantidad de huéspedes</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button type="button" className="secondary-button compact-button" onClick={() => handleRegisteredGuestCountChange(registeredGuestCount - 1)} disabled={registeredGuestCount <= 1 || submitting} style={{ padding: '3px 8px', fontSize: '13px' }}>−</button>
+                  <span style={{ minWidth: '22px', textAlign: 'center', fontWeight: 700, fontSize: '14px' }}>{registeredGuestCount}</span>
+                  <button type="button" className="secondary-button compact-button" onClick={() => handleRegisteredGuestCountChange(registeredGuestCount + 1)} disabled={registeredGuestCount >= (selectedRoom?.maxGuests || 20) || submitting} style={{ padding: '3px 8px', fontSize: '13px' }}>+</button>
+                </div>
+              </label>
             </div>
           )}
         </div>

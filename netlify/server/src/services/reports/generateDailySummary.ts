@@ -101,21 +101,28 @@ export async function processDailySummaryForEstablishment(
     return dt >= startOfDay && dt <= endOfDay;
   }).length;
 
-  // 5. Ingresos (pagos completados) registrados en folios durante el día
-  let totalRevenue = 0;
+  // 5. Ingresos (pagos completados) y Cargos registrados en folios durante el día
+  let totalPaid = 0;
   let revenueBOB = 0;
   const revenueByCurrency: Record<string, number> = {};
   const paymentMethods: Record<string, number> = {};
   let paymentsCount = 0;
 
+  let lodgingCharges = 0;
+  let consumptionCharges = 0;
+  let otherCharges = 0;
+  let totalCharges = 0;
+
   for (const folioDoc of foliosSnap.docs) {
     const folio = folioDoc.data();
+    
+    // Pagos
     const payments = Array.isArray(folio.payments) ? folio.payments : [];
     for (const p of payments) {
       if (p.status === 'completed' && p.createdAt && typeof p.amount === 'number') {
         const pDate = p.createdAt.toDate ? p.createdAt.toDate() : new Date(p.createdAt.seconds * 1000);
         if (pDate >= startOfDay && pDate <= endOfDay) {
-          totalRevenue += p.amount; // Los refunds tienen amount negativo, así que se restan automáticamente
+          totalPaid += p.amount;
           
           const cur = p.currencyCode || 'BOB';
           const receivedAmt = typeof p.receivedAmount === 'number' ? p.receivedAmount : p.amount;
@@ -133,7 +140,34 @@ export async function processDailySummaryForEstablishment(
         }
       }
     }
+
+    // Cargos
+    const charges = Array.isArray(folio.charges) ? folio.charges : [];
+    for (const c of charges) {
+      const isLodging = c.productId === null || (c.description && c.description.toLowerCase().includes('hospedaje'));
+      const isConsumption = c.productId !== null && c.productId !== undefined && !isLodging;
+      
+      // Para hospedaje, usamos la fecha operativa (serviceDate) si existe. Para consumos usamos createdAt.
+      const dateField = (isLodging && c.serviceDate) ? c.serviceDate : c.createdAt;
+
+      if (dateField && typeof c.amount === 'number') {
+        const cDate = dateField.toDate ? dateField.toDate() : new Date(dateField.seconds * 1000);
+        if (cDate >= startOfDay && cDate <= endOfDay) {
+          totalCharges += c.amount;
+          
+          if (isLodging) {
+            lodgingCharges += c.amount;
+          } else if (isConsumption) {
+            consumptionCharges += c.amount;
+          } else {
+            otherCharges += c.amount;
+          }
+        }
+      }
+    }
   }
+
+  const outstandingBalance = totalCharges - totalPaid;
 
   // 6. Ocupación de camas
   const bedCountPromises = roomsSnap.docs.map(async (rDoc) => {
@@ -165,7 +199,7 @@ export async function processDailySummaryForEstablishment(
       cancellations: cancellationsCount,
       checkIns: checkInsCount,
       checkOuts: checkOutsCount,
-      revenue: Math.round(totalRevenue * 100) / 100,
+      revenue: Math.round(totalPaid * 100) / 100, // Mantener para compatibilidad
       revenueBOB: Math.round(revenueBOB * 100) / 100,
       revenueByCurrency,
       paymentMethods,
@@ -174,6 +208,12 @@ export async function processDailySummaryForEstablishment(
       occupancy,
       totalBeds,
       occupiedBeds: occupiedBedsCount,
+      lodgingCharges: Math.round(lodgingCharges * 100) / 100,
+      consumptionCharges: Math.round(consumptionCharges * 100) / 100,
+      otherCharges: Math.round(otherCharges * 100) / 100,
+      totalCharges: Math.round(totalCharges * 100) / 100,
+      totalPaid: Math.round(totalPaid * 100) / 100,
+      outstandingBalance: Math.round(outstandingBalance * 100) / 100,
       updatedAt: FieldValue.serverTimestamp(),
     },
     { merge: true } // Garantiza la idempotencia
@@ -185,12 +225,18 @@ export async function processDailySummaryForEstablishment(
     cancellationsCount,
     checkInsCount,
     checkOutsCount,
-    totalRevenue,
+    totalRevenue: totalPaid,
     occupancy,
     revenueBOB: Math.round(revenueBOB * 100) / 100,
     paymentMethods,
     paymentsCount,
     channels,
+    lodgingCharges,
+    consumptionCharges,
+    otherCharges,
+    totalCharges,
+    totalPaid,
+    outstandingBalance,
   };
 }
 
