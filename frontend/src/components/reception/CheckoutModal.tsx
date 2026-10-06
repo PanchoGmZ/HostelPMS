@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, LogOut, AlertTriangle, CheckCircle, DollarSign, Loader2 } from 'lucide-react'
 import { checkOutGuest } from '../../services/stays/staysService'
+import { getFolioByStayId } from '../../services/folios/foliosService'
 import type { Stay } from '../../types/stays'
 import type { Folio } from '../../types/folios'
 import type { Guest } from '../../types/guests'
@@ -9,7 +10,7 @@ interface CheckoutModalProps {
   establishmentId: string
   stay: Stay
   guest?: Guest
-  folio?: Folio
+  folio?: Folio // Se mantiene por compatibilidad, pero obtendremos el real
   onClose: () => void
   onOpenPayment: () => void
   onSuccess: (message: string) => void
@@ -26,16 +27,40 @@ export function CheckoutModal({
   onSuccess,
   onError,
 }: CheckoutModalProps) {
-  const balance = folio?.balance ?? 0
-  const hasDebt = balance > 0
+  const [actualFolio, setActualFolio] = useState<Folio | null>(folio || null)
+  const [loadingFolio, setLoadingFolio] = useState(true)
+
+  useEffect(() => {
+    let mounted = true
+    getFolioByStayId(establishmentId, stay.id).then((f) => {
+      if (mounted) {
+        if (f) setActualFolio(f)
+        setLoadingFolio(false)
+      }
+    }).catch((e) => {
+      console.error("Error fetching actual folio for checkout:", e)
+      if (mounted) setLoadingFolio(false)
+    })
+    return () => { mounted = false }
+  }, [establishmentId, stay.id])
+
+  const totalCharges = actualFolio?.totalCharges || 0
+  const totalPaid = actualFolio?.totalPaid || 0
+  const pendingAmount = Math.max(0, totalCharges - totalPaid)
+  const hasDebt = pendingAmount > 0
+
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const guestFullName = guest ? `${guest.firstName} ${guest.lastName}` : 'el huésped'
 
   const handleConfirmCheckout = async () => {
+    if (loadingFolio) {
+      setError(`Calculando saldos, por favor espere...`)
+      return
+    }
     if (hasDebt) {
-      setError(`No es posible realizar el check-out porque existe un saldo pendiente de ${balance} BOB.`)
+      setError(`No es posible realizar el check-out porque existe un saldo pendiente de ${pendingAmount.toFixed(2)} ${actualFolio?.currency || 'BOB'}.`)
       return
     }
 
@@ -94,7 +119,7 @@ export function CheckoutModal({
             <div className="stay-notice critical" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertTriangle size={18} />
-                <strong>Saldo pendiente: {balance.toFixed(2)} {folio?.currency ?? 'BOB'}</strong>
+                <strong>Saldo pendiente: {pendingAmount.toFixed(2)} {actualFolio?.currency ?? 'BOB'}</strong>
               </div>
               <p style={{ margin: 0, fontSize: '13px' }}>
                 Para completar la salida debes cobrar el total adeudado antes de liberar la cama.

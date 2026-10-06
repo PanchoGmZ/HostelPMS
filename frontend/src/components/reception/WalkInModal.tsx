@@ -94,6 +94,7 @@ export function WalkInModal({
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [createdReservationId, setCreatedReservationId] = useState<string | null>(null)
 
   // v1.12: checkOutDateStr ahora parte desde checkInDateStr (no siempre desde hoy)
   const checkOutDateStr = useMemo(() => {
@@ -256,112 +257,123 @@ export function WalkInModal({
 
     setSubmitting(true)
     try {
-      // 1. If new guest, save to Firestore and get ID properly!
-      if (isNewGuest) {
-        finalGuestId = await saveGuest(
-          establishmentId,
-          {
-            firstName: firstName.trim(),
-            lastName: lastName.trim(),
-            documentType: docType,
-            // v1.7: documentNumber siempre STRING — no convertir a number
-            documentNumber: docNumber.trim(),
-            nationality: nationality.trim(),
-            birthDate: birthDate || null,
-            whatsapp: whatsapp.trim(),
-            email: email.trim() || null,
-            occupation: null,
-            previousCity: previousCity.trim() || null,
-            nextCity: nextCity.trim() || null,
-            emergencyContact: emergencyContact.trim() || null,
-            notes: notes.trim() || null,
-          }
-        )
-      }
+      let currentResId = createdReservationId
 
-      // v1.15: Guardar acompañantes nuevos y recolectar IDs
-      const companionGuestIds: string[] = []
-      for (const slot of companionSlots) {
-        if (slot.mode === 'empty') continue
-        if (slot.mode === 'existing' && slot.existingGuestId) {
-          if (slot.existingGuestId !== finalGuestId) {
-            companionGuestIds.push(slot.existingGuestId)
-          }
-        } else if (slot.mode === 'new' && slot.validated) {
-          const cleaned = cleanDraft(slot.draft)
-          const newCompanionId = await saveGuest(establishmentId, cleaned)
-          companionGuestIds.push(newCompanionId)
+      if (!currentResId) {
+        // 1. If new guest, save to Firestore and get ID properly!
+        if (isNewGuest) {
+          finalGuestId = await saveGuest(
+            establishmentId,
+            {
+              firstName: firstName.trim(),
+              lastName: lastName.trim(),
+              documentType: docType,
+              // v1.7: documentNumber siempre STRING — no convertir a number
+              documentNumber: docNumber.trim(),
+              nationality: nationality.trim(),
+              birthDate: birthDate || null,
+              whatsapp: whatsapp.trim(),
+              email: email.trim() || null,
+              occupation: null,
+              previousCity: previousCity.trim() || null,
+              nextCity: nextCity.trim() || null,
+              emergencyContact: emergencyContact.trim() || null,
+              notes: notes.trim() || null,
+            }
+          )
         }
-      }
 
-      // 2. Build dates array for pricePerNight (v1.12: desde checkInDateStr)
-      const dates: string[] = []
-      for (
-        let d = new Date(`${checkInDateStr}T12:00:00.000-04:00`);
-        d < new Date(`${checkOutDateStr}T12:00:00.000-04:00`);
-        d.setUTCDate(d.getUTCDate() + 1)
-      ) {
-        dates.push(d.toISOString().slice(0, 10))
-      }
+        // v1.15: Guardar acompañantes nuevos y recolectar IDs
+        const companionGuestIds: string[] = []
+        for (const slot of companionSlots) {
+          if (slot.mode === 'empty') continue
+          if (slot.mode === 'existing' && slot.existingGuestId) {
+            if (slot.existingGuestId !== finalGuestId) {
+              companionGuestIds.push(slot.existingGuestId)
+            }
+          } else if (slot.mode === 'new' && slot.validated) {
+            const cleaned = cleanDraft(slot.draft)
+            const newCompanionId = await saveGuest(establishmentId, cleaned)
+            companionGuestIds.push(newCompanionId)
+          }
+        }
 
-      // v1.7: para la matriz pricePerNight enviamos precio estándar como placeholder
-      // El backend usará el pricingMode para determinar el precio real
-      const placeholderPrice = pricingMode === 'standard' ? standardPricePerNight : 0
-      const pricePerNightMatrix = Object.fromEntries(
-        effectiveBedIds.map((bId) => [
-          bId,
-          Object.fromEntries(dates.map((date) => [date, isPrivate ? (bId === effectiveBedIds[0] ? placeholderPrice : 0) : placeholderPrice])),
-        ])
-      )
+        // 2. Build dates array for pricePerNight (v1.12: desde checkInDateStr)
+        const dates: string[] = []
+        for (
+          let d = new Date(`${checkInDateStr}T12:00:00.000-04:00`);
+          d < new Date(`${checkOutDateStr}T12:00:00.000-04:00`);
+          d.setUTCDate(d.getUTCDate() + 1)
+        ) {
+          dates.push(d.toISOString().slice(0, 10))
+        }
 
-      // 3. Create instant reservation (will fail if availability conflicts in backend)
-      // v1.7: guestCount siempre número — bed=1, full_room=guestCount explícito
-      const resolvedGuestCount = isPrivate ? guestCount : 1
+        // v1.7: para la matriz pricePerNight enviamos precio estándar como placeholder
+        // El backend usará el pricingMode para determinar el precio real
+        const placeholderPrice = pricingMode === 'standard' ? standardPricePerNight : 0
+        const pricePerNightMatrix = Object.fromEntries(
+          effectiveBedIds.map((bId) => [
+            bId,
+            Object.fromEntries(dates.map((date) => [date, isPrivate ? (bId === effectiveBedIds[0] ? placeholderPrice : 0) : placeholderPrice])),
+          ])
+        )
 
-      // v1.12: checkIn usa checkInDateStr (puede ser retroactivo)
-      const resResult = await createReservation({
-        establishmentId,
-        guestId: finalGuestId,
-        roomId: selectedRoomObj.id,
-        bedIds: effectiveBedIds,
-        saleMode: isPrivate ? 'full_room' : 'bed',
-        checkIn: checkInDateStr,
-        checkOut: checkOutDateStr,
-        pricePerNight: pricePerNightMatrix,
-        channel: 'direct',
-        // v1.7: guestCount siempre número, nunca undefined
-        guestCount: resolvedGuestCount,
-        // v1.15: usar companionGuestIds en lugar de dropdown IDs
-        guestIds: isPrivate ? companionGuestIds : undefined,
-        // v1.7: pricingMode y precio manual
-        pricingMode,
-        ...(pricingMode === 'manual' ? {
-          manualPricePerNight,
-          specialRateReason: effectiveReason,
-        } : {}),
-      })
+        // 3. Create instant reservation (will fail if availability conflicts in backend)
+        // v1.7: guestCount siempre número — bed=1, full_room=guestCount explícito
+        const resolvedGuestCount = isPrivate ? guestCount : 1
 
-      if (!resResult?.reservationId) {
-        throw new Error('No se pudo generar la reserva para el check-in.')
+        // v1.12: checkIn usa checkInDateStr (puede ser retroactivo)
+        const resResult = await createReservation({
+          establishmentId,
+          guestId: finalGuestId,
+          roomId: selectedRoomObj.id,
+          bedIds: effectiveBedIds,
+          saleMode: isPrivate ? 'full_room' : 'bed',
+          checkIn: checkInDateStr,
+          checkOut: checkOutDateStr,
+          pricePerNight: pricePerNightMatrix,
+          channel: 'direct',
+          // v1.7: guestCount siempre número, nunca undefined
+          guestCount: resolvedGuestCount,
+          // v1.15: usar companionGuestIds en lugar de dropdown IDs
+          guestIds: isPrivate ? companionGuestIds : undefined,
+          // v1.7: pricingMode y precio manual
+          pricingMode,
+          ...(pricingMode === 'manual' ? {
+            manualPricePerNight,
+            specialRateReason: effectiveReason,
+          } : {}),
+        })
+
+        if (!resResult?.reservationId) {
+          throw new Error('No se pudo generar la reserva para el check-in.')
+        }
+        currentResId = resResult.reservationId
+        setCreatedReservationId(currentResId)
       }
 
       // 4. Perform immediate check-in
-      await checkInGuest({
-        establishmentId,
-        reservationId: resResult.reservationId,
-        guestIds: isPrivate ? [finalGuestId, ...companionGuestIds] : [finalGuestId],
-        roomId: selectedRoomObj.id,
-        bedIds: effectiveBedIds,
-        expectedCheckOutDate: checkOutDateStr,
-        deposit,
-        documentVerified: true,
-      })
+      try {
+        await checkInGuest({
+          establishmentId,
+          reservationId: currentResId,
+          guestIds: isPrivate ? [finalGuestId, ...companionSlots.map(s => s.mode === 'existing' ? s.existingGuestId : s.validated ? 'new' : null).filter(Boolean) as string[]] : [finalGuestId],
+          roomId: selectedRoomObj.id,
+          bedIds: effectiveBedIds,
+          expectedCheckOutDate: checkOutDateStr,
+          deposit,
+          documentVerified: true,
+        })
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error al procesar check-in'
+        throw new Error(`Se creó la reserva pero no se completó el Check-in. Motivo: ${msg}`)
+      }
 
       onSuccess(`¡Walk-in registrado con éxito! Huésped alojado en ${bedDisplayName}.`)
       onClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al procesar walk-in'
-      setFormError(`No se pudo completar el walk-in: ${msg}`)
+      setFormError(msg)
       onError(msg)
     } finally {
       setSubmitting(false)
@@ -829,6 +841,8 @@ export function WalkInModal({
               <>
                 <Loader2 size={16} className="loader" /> Procesando ingreso...
               </>
+            ) : createdReservationId ? (
+              'Reintentar Check-in'
             ) : (
               'Confirmar Check-in Inmediato'
             )}

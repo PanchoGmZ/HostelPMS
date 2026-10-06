@@ -202,7 +202,7 @@ export async function extendStayService(
             amount: extraCharges,
             status: 'pending',
             productId: null,
-            createdAt: FieldValue.serverTimestamp(),
+            createdAt: Timestamp.now(),
           },
         ];
 

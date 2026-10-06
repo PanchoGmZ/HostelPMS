@@ -132,7 +132,7 @@ export async function checkInGuestService(
         status: 'pending',
         productId: null,
         serviceDate: reservation.checkInDate, // Fecha operativa para reportes históricos/retroactivos
-        createdAt: FieldValue.serverTimestamp(),
+        createdAt: Timestamp.now(),
       };
 
       const initialTotalPaid = deposit || 0;

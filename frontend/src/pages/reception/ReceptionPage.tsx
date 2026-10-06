@@ -177,13 +177,13 @@ export function ReceptionPage() {
     return incidents.filter((i) => i.status !== 'completed')
   }, [incidents])
 
-  // Today's arrivals (Confirmed reservations starting today)
-  const todayArrivals = useMemo(() => {
+  // Pending arrivals (Confirmed reservations starting today or earlier without a stay)
+  const pendingArrivals = useMemo(() => {
     return reservations.filter((r) => {
       if (r.status !== 'confirmed') return false
       if (!r.checkInDate) return false
       const dateStr = dateFromSeconds(r.checkInDate.seconds)
-      return dateStr === todayStr
+      return dateStr <= todayStr
     })
   }, [reservations, todayStr])
 
@@ -307,7 +307,7 @@ export function ReceptionPage() {
       <SummaryCards
         totalBeds={totalBeds}
         occupiedBeds={occupiedBeds}
-        arrivalsToday={todayArrivals.length}
+        arrivalsToday={pendingArrivals.length}
         departuresToday={todayDepartures.length}
         cleaningPending={pendingCleaning.length}
         maintenanceActive={activeIncidents.length}
@@ -320,7 +320,7 @@ export function ReceptionPage() {
           type="button"
         >
           <Menu size={16} />
-          <span>Ver Llegadas y Salidas ({todayArrivals.length + todayDepartures.length})</span>
+          <span>Ver Llegadas y Salidas ({pendingArrivals.length + todayDepartures.length})</span>
         </button>
       </div>
 
@@ -337,7 +337,7 @@ export function ReceptionPage() {
               stays={stays}
               guests={guests}
               folios={folios}
-              todayReservations={todayArrivals}
+              todayReservations={pendingArrivals}
               onBedClick={handleBedClick}
             />
           )}
@@ -366,7 +366,7 @@ export function ReceptionPage() {
           </div>
           <div className="dashboard-side-column-content">
             <ArrivalsPanel
-              todayArrivals={todayArrivals}
+              todayArrivals={pendingArrivals}
               guests={guests}
               rooms={rooms}
               onCheckInReservation={(res) => {
