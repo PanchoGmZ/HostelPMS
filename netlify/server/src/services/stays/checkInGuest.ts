@@ -4,11 +4,21 @@ import type { AuthContext } from '../../auth/verifyAuth';
 import { ReservationError } from '../reservations/createReservation';
 import { processDailySummaryForEstablishment } from '../reports/generateDailySummary';
 
+export interface CheckInInitialPayment {
+  amount: number;
+  method: 'cash' | 'card' | 'transfer' | 'qr';
+  reference?: string | null;
+  currencyCode?: string;
+  receivedAmount?: number;
+}
+
 export interface CheckInGuestPayload {
   establishmentId: string;
   reservationId: string;
   guestIds: string[];
   deposit?: number;
+  // v1.17: pago real en el momento del check-in
+  initialPayment?: CheckInInitialPayment;
 }
 
 export interface CheckInGuestResult {
@@ -23,7 +33,7 @@ export async function checkInGuestService(
   getFirebaseAdmin();
   const db = getFirestore();
 
-  const { establishmentId, reservationId, guestIds, deposit } = payload;
+  const { establishmentId, reservationId, guestIds, deposit, initialPayment } = payload;
 
   if (!establishmentId || !reservationId || !Array.isArray(guestIds)) {
     throw new ReservationError('Faltan parámetros requeridos.', 400);
@@ -135,27 +145,78 @@ export async function checkInGuestService(
         createdAt: Timestamp.now(),
       };
 
-      const initialTotalPaid = deposit || 0;
-      const initialBalance = initialTotalPaid - lodgingAmount; // < 0 = debt, > 0 = credit
+      // v1.17: El pago inicial real de check-in tiene prioridad sobre el depósito genérico.
+      // Si se envía initialPayment, se trata como pago real con método/moneda/referencia.
+      // Si no, se usa deposit (legacy). Ambos se registran en payments[] del folio.
+      const paymentEntries: object[] = [];
+      let totalPaidInitial = 0;
+
+      if (initialPayment && typeof initialPayment.amount === 'number' && initialPayment.amount > 0) {
+        const payId = db.collection('dummy').doc().id;
+        totalPaidInitial = initialPayment.amount;
+        paymentEntries.push({
+          id: payId,
+          amount: initialPayment.amount,
+          method: initialPayment.method || 'cash',
+          status: 'completed',
+          reference: initialPayment.reference || null,
+          currencyCode: initialPayment.currencyCode || 'BOB',
+          receivedAmount: typeof initialPayment.receivedAmount === 'number' ? initialPayment.receivedAmount : initialPayment.amount,
+          createdAt: Timestamp.now(),
+        });
+      } else if (deposit && deposit > 0) {
+        totalPaidInitial = deposit;
+        paymentEntries.push({
+          id: db.collection('dummy').doc().id,
+          amount: deposit,
+          method: 'deposit',
+          status: 'completed',
+          reference: null,
+          currencyCode: 'BOB',
+          receivedAmount: deposit,
+          createdAt: Timestamp.now(),
+        });
+      }
+
+      const initialBalance = totalPaidInitial - lodgingAmount;
 
       transaction.set(folioRef, {
         stayId: stayRef.id,
+        reservationId: reservationId,
         currency: reservation.currency || 'BOB',
         totalCharges: lodgingAmount,
-        totalPaid: initialTotalPaid,
+        totalPaid: totalPaidInitial,
         balance: initialBalance,
         status: 'open',
         charges: [lodgingCharge],
-        payments: deposit ? [{ 
-          id: db.collection('dummy').doc().id, 
-          amount: deposit, 
-          method: 'deposit', 
-          status: 'completed', 
-          createdAt: Timestamp.now() 
-        }] : [],
+        payments: paymentEntries,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      // v1.17: Si hay pago inicial real, registrar en caja si hay turno abierto.
+      if (initialPayment && typeof initialPayment.amount === 'number' && initialPayment.amount > 0) {
+        const cashShiftsSnap = await transaction.get(
+          estRef.collection('cashShifts').where('status', '==', 'open').limit(1)
+        );
+        if (cashShiftsSnap.empty) {
+          throw new ReservationError('Debes abrir un turno de caja antes de registrar un pago.', 400);
+        }
+        
+        const cashShiftRef = cashShiftsSnap.docs[0].ref;
+        const movRef = cashShiftRef.collection('movements').doc();
+        transaction.set(movRef, {
+          type: 'payment',
+          amount: initialPayment.amount,
+          method: initialPayment.method || 'cash',
+          currencyCode: initialPayment.currencyCode || 'BOB',
+          receivedAmount: typeof initialPayment.receivedAmount === 'number' ? initialPayment.receivedAmount : initialPayment.amount,
+          description: `Pago Check-in - ${stayRef.id}`,
+          relatedFolioId: folioRef.id,
+          createdBy: auth.uid || '',
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      }
     });
 
     // v1.12: Regenerar dailySummaries históricos afectados si el check-in es retroactivo.

@@ -2,6 +2,7 @@ import { getFirebaseAdmin } from '../../firebase/admin';
 import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
 import type { AuthContext } from '../../auth/verifyAuth';
 import { ReservationError } from '../reservations/createReservation';
+import { processDailySummaryForEstablishment } from '../reports/generateDailySummary';
 
 export interface CheckOutGuestPayload {
   establishmentId: string;
@@ -63,6 +64,8 @@ export async function checkOutGuestService(
     return Number.isNaN(date.getTime()) ? null : date;
   };
 
+  const finalDaysToFree: string[] = [];
+
   try {
     await db.runTransaction(async (transaction) => {
       // ── PHASE 1: ALL READS ──────────────────────────────────────────
@@ -113,7 +116,9 @@ export async function checkOutGuestService(
       daysToFree.length = 0; // reset
       if (actualLocal && expectedLocal && actualLocal < expectedLocal) {
         for (let d = new Date(actualLocal); d < expectedLocal; d.setUTCDate(d.getUTCDate() + 1)) {
-          daysToFree.push(getLocalYMD(d));
+          const ymd = getLocalYMD(d);
+          daysToFree.push(ymd);
+          finalDaysToFree.push(ymd);
         }
       }
 
@@ -171,6 +176,27 @@ export async function checkOutGuestService(
         }
       }
     });
+
+    // ── POST-TRANSACTION: REGENERATE HISTORICAL DAILY SUMMARIES ──
+    if (finalDaysToFree.length > 0) {
+      const boliviaFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/La_Paz',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const todayStr = boliviaFormatter.format(new Date());
+
+      for (const dateStr of finalDaysToFree) {
+        if (dateStr < todayStr) {
+          try {
+            await processDailySummaryForEstablishment(establishmentId, dateStr);
+          } catch (e) {
+            console.error(`Error regenerando summary para ${dateStr} en checkout retroactivo:`, e);
+          }
+        }
+      }
+    }
 
     return { success: true as const, message: 'Check-out completado.' };
   } catch (error: any) {

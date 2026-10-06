@@ -8,6 +8,8 @@ export interface ExtendStayPayload {
   stayId: string;
   newCheckOutDate: string;
   extraCharges?: number;
+  // v1.17: precio por noche explícito (usado cuando no se puede calcular de la reserva original)
+  pricePerExtraNight?: number;
 }
 
 export interface ExtendStayResult {
@@ -29,7 +31,7 @@ export async function extendStayService(
   getFirebaseAdmin();
   const db = getFirestore();
 
-  const { establishmentId, stayId, newCheckOutDate, extraCharges } = payload;
+  const { establishmentId, stayId, newCheckOutDate, extraCharges, pricePerExtraNight } = payload;
 
   if (!establishmentId || !stayId || !newCheckOutDate) {
     throw new ReservationError('Parámetros requeridos faltantes.', 400);
@@ -186,35 +188,50 @@ export async function extendStayService(
         );
       }
 
-      // 3c. Add extraCharges to Folio if applicable
-      if (extraCharges && extraCharges > 0 && !foliosSnap.empty) {
+      // 3c. Add extension charge to Folio
+      if (!foliosSnap.empty) {
         const folioRef = foliosSnap.docs[0].ref;
         const folioData = foliosSnap.docs[0].data();
 
-        const chargeId = db.collection('dummy').doc().id;
-        const updatedCharges = [
-          ...(folioData.charges || []),
-          {
-            id: chargeId,
-            description: 'Extensión de estadía',
-            quantity: 1,
-            unitPrice: extraCharges,
-            amount: extraCharges,
-            status: 'pending',
-            productId: null,
-            createdAt: Timestamp.now(),
-          },
-        ];
+        // Calcular monto de extensión
+        let extensionAmount = 0;
+        if (typeof extraCharges === 'number' && extraCharges > 0) {
+          // Monto provisto explicitamente
+          extensionAmount = extraCharges;
+        } else if (typeof pricePerExtraNight === 'number' && pricePerExtraNight >= 0 && daysToBlock.length > 0) {
+          // Precio por noche × noches adicionales
+          extensionAmount = pricePerExtraNight * daysToBlock.length;
+        }
 
-        const newTotalCharges = (folioData.totalCharges || 0) + extraCharges;
-        const newBalance = (folioData.totalPaid || 0) - newTotalCharges;
+        if (extensionAmount > 0) {
+          const chargeId = db.collection('dummy').doc().id;
+          const updatedCharges = [
+            ...(folioData.charges || []),
+            {
+              id: chargeId,
+              type: 'lodging_extension',
+              description: `Hospedaje adicional · ${daysToBlock.length} noche(s)`,
+              quantity: daysToBlock.length,
+              unitPrice: extensionAmount / daysToBlock.length,
+              amount: extensionAmount,
+              status: 'pending',
+              productId: null,
+              // serviceDate = primera noche adicional (oldCheckOutLocal)
+              serviceDate: Timestamp.fromDate(oldCheckOutLocal),
+              createdAt: Timestamp.now(),
+            },
+          ];
 
-        transaction.update(folioRef, {
-          charges: updatedCharges,
-          totalCharges: newTotalCharges,
-          balance: newBalance,
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+          const newTotalCharges = (folioData.totalCharges || 0) + extensionAmount;
+          const newBalance = (folioData.totalPaid || 0) - newTotalCharges;
+
+          transaction.update(folioRef, {
+            charges: updatedCharges,
+            totalCharges: newTotalCharges,
+            balance: newBalance,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
       }
     });
 

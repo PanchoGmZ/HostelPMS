@@ -2,7 +2,7 @@ import { collection, getDocs, orderBy, query } from 'firebase/firestore'
 
 import { db } from '../firebase/config'
 import { apiPost } from '../api/apiClient'
-import type { ChangeBedPayload, CheckInPayload, CheckOutPayload, ExtendStayPayload, Stay } from '../../types/stays'
+import type { ChangeBedPayload, ChangeBedInStayPayload, CheckInPayload, CheckOutPayload, ExtendStayPayload, Stay } from '../../types/stays'
 
 export async function listStays(establishmentId: string): Promise<Stay[]> {
   const reference = collection(db, `establishments/${establishmentId}/stays`)
@@ -31,10 +31,17 @@ export async function changeBed(data: ChangeBedPayload) {
   )
 }
 
+// v1.17: cambio de habitación/cama durante estadía activa sin checkout
+export async function changeBedInStay(data: ChangeBedInStayPayload) {
+  return await apiPost<{ success: boolean; message?: string }>(
+    '/api/changeBedInStay',
+    data
+  )
+}
+
 export async function extendStay(data: ExtendStayPayload) {
   return await apiPost<{ success: boolean; message?: string }>(
     '/api/extendStay',
     data
   )
 }
-

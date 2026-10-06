@@ -1,5 +1,14 @@
 # Changelog — Pata y Perro PMS
 
+## v1.17
+Fecha: 2026-10-06
+
+- **Check-in integrado con pagos**: Permite pagar en efectivo o transferencia inmediatamente sin necesidad de salir del modal (requiere turno de caja).
+- **Check-out inteligente**: Modal muestra la deuda completa; permite pagar la deuda allí mismo. Guardián bloquea check-out si es fecha tardía e insta a extender estadía.
+- **Extensión de Estadía Controlada**: Nuevo modal que añade cargo transaccional `lodging_extension`, respetando la historia financiera.
+- **Cambio de Habitación/Cama Transaccional**: UI para cambiar de cuarto; genera `movement` histórico, libera la disponibilidad anterior y bloquea la nueva, permitiendo incluso cambios retroactivos o inmediatos.
+- **Regeneración retroactiva de summaries**: Si un Check-out o Cambio de Cama se hace con fechas pasadas, el sistema recalcula los Daily Summaries para mantener 100% de coherencia en los reportes de ocupación.
+- **Historial de Movimientos**: Panel de eventos (creación, cambio de cuarto, extensión) visible dentro de la vista `GuestStayDrawer`.
 ## v1.16
 Fecha: 2026-10-05
 

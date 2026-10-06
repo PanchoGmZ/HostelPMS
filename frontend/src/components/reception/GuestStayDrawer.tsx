@@ -31,6 +31,8 @@ interface GuestStayDrawerProps {
   onAddConsumption: (stay: Stay, folio?: Folio) => void
   onRecordPayment: (stay: Stay, folio?: Folio) => void
   onCheckout: (stay: Stay, folio?: Folio) => void
+  onExtendStay?: (stay: Stay, folio?: Folio) => void
+  onChangeRoom?: (stay: Stay) => void
 }
 
 function formatDateDisplay(val?: { seconds: number } | null | string): string {
@@ -53,8 +55,11 @@ export function GuestStayDrawer({
   onAddConsumption,
   onRecordPayment,
   onCheckout,
+  onExtendStay,
+  onChangeRoom,
 }: GuestStayDrawerProps) {
   const [showFolioDetail, setShowFolioDetail] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow
@@ -231,21 +236,61 @@ export function GuestStayDrawer({
               </div>
 
               <div className="folio-summary-bar">
-                <div>Total Cargos: <strong>{folio?.totalCharges ?? 0} BOB</strong></div>
-                <div>Total Pagado: <strong>{folio?.totalPaid ?? 0} BOB</strong></div>
+                <div>Total Cargos: <strong>{folio?.totalCharges ?? 0} {folio?.currency ?? 'BOB'}</strong></div>
+                <div>Total Pagado: <strong>{folio?.totalPaid ?? 0} {folio?.currency ?? 'BOB'}</strong></div>
               </div>
+            </div>
+          )}
+
+          {/* Movements History */}
+          {(stay.movements && stay.movements.length > 0) && (
+            <div className="drawer-balance-card cleared" style={{ marginTop: '12px', background: 'var(--surface, #ffffff)', border: '1px solid var(--border, #e2e8f0)' }}>
+              <div className="balance-info" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span className="balance-label" style={{ color: 'var(--text, #1e293b)', margin: 0, fontWeight: 600 }}>
+                  Historial de Movimientos ({stay.movements.length})
+                </span>
+                <button
+                  type="button"
+                  className="toggle-folio-btn"
+                  onClick={() => setShowHistory(!showHistory)}
+                  style={{ background: 'transparent', padding: 0 }}
+                >
+                  {showHistory ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                </button>
+              </div>
+
+              {showHistory && (
+                <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border, #e2e8f0)' }}>
+                  {stay.movements.map((mov) => (
+                    <div key={mov.id} style={{ display: 'flex', gap: '8px', marginBottom: '12px', fontSize: '13px' }}>
+                      <div style={{ color: 'var(--slate-400, #94a3b8)', marginTop: '2px' }}>
+                        {mov.type === 'check_in' && <Calendar size={14} />}
+                        {mov.type === 'room_change' && <BedDouble size={14} />}
+                        {mov.type === 'check_out' && <LogOut size={14} />}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{mov.description}</div>
+                        <div style={{ color: 'var(--slate-500, #64748b)', fontSize: '11px', marginTop: '2px' }}>
+                          {formatDateDisplay(mov.createdAt)} • {mov.createdBy ? `User: ${mov.createdBy}` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Action Buttons Bar */}
-        <div className="drawer-actions">
+        <div className="drawer-actions" style={{ flexWrap: 'wrap', gap: '8px' }}>
           <button
             type="button"
             className="secondary-button drawer-action-btn"
             onClick={() => onAddConsumption(stay, folio)}
+            style={{ flex: '1 1 calc(50% - 4px)' }}
           >
-            <PlusCircle size={17} />
+            <PlusCircle size={15} />
             <span>+ Consumo</span>
           </button>
 
@@ -253,17 +298,43 @@ export function GuestStayDrawer({
             type="button"
             className="secondary-button drawer-action-btn"
             onClick={() => onRecordPayment(stay, folio)}
+            style={{ flex: '1 1 calc(50% - 4px)' }}
           >
-            <DollarSign size={17} />
+            <DollarSign size={15} />
             <span>Registrar Pago</span>
           </button>
+
+          {onExtendStay && (
+            <button
+              type="button"
+              className="secondary-button drawer-action-btn"
+              onClick={() => onExtendStay(stay, folio)}
+              style={{ flex: '1 1 calc(50% - 4px)' }}
+            >
+              <Calendar size={15} />
+              <span>Extender</span>
+            </button>
+          )}
+
+          {onChangeRoom && (
+            <button
+              type="button"
+              className="secondary-button drawer-action-btn"
+              onClick={() => onChangeRoom(stay)}
+              style={{ flex: '1 1 calc(50% - 4px)' }}
+            >
+              <BedDouble size={15} />
+              <span>Cambiar Hab.</span>
+            </button>
+          )}
 
           <button
             type="button"
             className="primary-button drawer-action-btn checkout-btn"
             onClick={() => onCheckout(stay, folio)}
+            style={{ flex: '1 1 100%' }}
           >
-            <LogOut size={17} />
+            <LogOut size={16} />
             <span>Check-out</span>
           </button>
         </div>

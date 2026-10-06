@@ -459,6 +459,7 @@ export function ReservationsPage() {
           reservations={reservations}
           rooms={rooms}
           guests={guests}
+          activeCashShift={null}
           onClose={() => setCheckingInReservation(null)}
           onSuccess={(msg) => {
             setCheckingInReservation(null)

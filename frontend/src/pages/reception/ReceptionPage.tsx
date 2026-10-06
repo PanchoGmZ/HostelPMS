@@ -35,6 +35,8 @@ import { GuestSearchModal } from '../../components/reception/GuestSearchModal'
 import { SummaryCards } from '../../components/reception/SummaryCards'
 import { NewEntryInterceptorModal } from '../../components/reception/NewEntryInterceptorModal'
 import { CheckInModal } from '../../components/reception/CheckInModal'
+import { ExtendStayModal } from '../../components/reception/ExtendStayModal'
+import { ChangeRoomModal } from '../../components/reception/ChangeRoomModal'
 
 import './ReceptionPage.css'
 
@@ -88,6 +90,9 @@ export function ReceptionPage() {
   const [searchModalOpen, setSearchModalOpen] = useState(false)
   const [interceptorOpen, setInterceptorOpen] = useState(false)
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  
+  const [extendStayData, setExtendStayData] = useState<{ stay: Stay; folio?: Folio } | null>(null)
+  const [changeRoomStay, setChangeRoomStay] = useState<Stay | null>(null)
 
   // Load all operational data in parallel
   const loadData = useCallback(async (isSilent = false) => {
@@ -405,6 +410,8 @@ export function ReceptionPage() {
           onAddConsumption={(stay, folio) => setPosData({ stay, folio })}
           onRecordPayment={(stay, folio) => setPaymentData({ stay, folio })}
           onCheckout={(stay, folio) => setCheckoutData({ stay, guest: drawerGuest, folio })}
+          onExtendStay={(stay, folio) => setExtendStayData({ stay, folio })}
+          onChangeRoom={(stay) => setChangeRoomStay(stay)}
         />
       )}
 
@@ -474,6 +481,7 @@ export function ReceptionPage() {
           reservations={reservations}
           rooms={rooms}
           guests={guests}
+          activeCashShift={activeCashShift}
           onClose={() => setCheckInReservation(null)}
           onSuccess={(msg) => {
             setCheckInReservation(null)
@@ -524,9 +532,11 @@ export function ReceptionPage() {
           stay={checkoutData.stay}
           guest={checkoutData.guest}
           folio={checkoutData.folio}
+          activeCashShift={activeCashShift}
           onClose={() => setCheckoutData(null)}
-          onOpenPayment={() => {
-            setPaymentData({ stay: checkoutData.stay, folio: checkoutData.folio })
+          onExtendStay={() => {
+            setCheckoutData(null)
+            setExtendStayData({ stay: checkoutData.stay, folio: checkoutData.folio })
           }}
           onSuccess={(msg) => {
             setSuccessMessage(msg)
@@ -589,6 +599,39 @@ export function ReceptionPage() {
               setError('No hay camas disponibles actualmente para un walk-in.')
             }
           }}
+        />
+      )}
+      {/* 11. Extend Stay Modal */}
+      {extendStayData && (
+        <ExtendStayModal
+          establishmentId={establishmentId}
+          stay={extendStayData.stay}
+          folio={extendStayData.folio}
+          rooms={rooms}
+          activeCashShift={activeCashShift}
+          onClose={() => setExtendStayData(null)}
+          onSuccess={(msg) => {
+            setSuccessMessage(msg)
+            void loadData(true)
+          }}
+          onError={(err) => setError(err)}
+        />
+      )}
+
+      {/* 12. Change Room Modal */}
+      {changeRoomStay && (
+        <ChangeRoomModal
+          establishmentId={establishmentId}
+          stay={changeRoomStay}
+          rooms={rooms}
+          currentRoom={rooms.find(r => r.id === changeRoomStay.roomId)}
+          onClose={() => setChangeRoomStay(null)}
+          onSuccess={(msg) => {
+            setSuccessMessage(msg)
+            setDrawerStay(null) // Close drawer to reflect change
+            void loadData(true)
+          }}
+          onError={(err) => setError(err)}
         />
       )}
     </div>

@@ -11,12 +11,16 @@ import type { Reservation } from '../../types/reservations'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 
+import type { CashShift } from '../../types/cash'
+import { CURRENCIES } from '../../utils/currencies'
+
 interface CheckInModalProps {
   establishmentId: string
   reservation?: Reservation | null
   reservations: Reservation[]
   rooms: Room[]
   guests: Guest[]
+  activeCashShift: CashShift | null
   onClose: () => void
   onSuccess: (message: string) => void
   onError: (error: string) => void
@@ -47,6 +51,7 @@ export function CheckInModal({
   reservations,
   rooms,
   guests,
+  activeCashShift,
   onClose,
   onSuccess,
   onError,
@@ -88,6 +93,17 @@ export function CheckInModal({
   const multiGuestCount = currentRes?.guestCount ?? 1
   const [multiGuestSlots, setMultiGuestSlots] = useState<GuestSlot[]>([])
   const [showMultiGuest, setShowMultiGuest] = useState(false)
+
+  // v1.17: Pago integrado en Check-in
+  const lodgingTotal = currentRes?.totalAmount ?? 0
+  const defaultCurrency = currentRes?.currency ?? 'BOB'
+  
+  const [payNow, setPayNow] = useState(false)
+  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
+  const [payCurrency, setPayCurrency] = useState(defaultCurrency)
+  const [payReceived, setPayReceived] = useState<number>(0)
+  
+  const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
 
   // v1.15: Inicializar slots cuando cambia la reserva o los huéspedes
   useEffect(() => {
@@ -328,6 +344,13 @@ export function CheckInModal({
         expectedCheckOutDate: expectedCheckOut,
         deposit: Number(deposit) || 0,
         documentVerified,
+        // v1.17: Pago inicial integrado
+        initialPayment: (payNow && payReceived > 0) ? {
+          amount: lodgingTotal,
+          method: payMethod,
+          currencyCode: payCurrency,
+          receivedAmount: payReceived,
+        } : undefined,
       })
 
       onSuccess(`Check-in completado exitosamente para ${titularGuest ? `${titularGuest.firstName} ${titularGuest.lastName}` : 'el huésped'}${companionIds.length > 0 ? ` y ${companionIds.length} acompañante(s)` : ''}.`)
@@ -662,6 +685,88 @@ export function CheckInModal({
                 </label>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* v1.17: Resumen de Hospedaje y Pago Integrado */}
+        {!isQuickReservation && currentRes && (
+          <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+            <h3 style={{ fontSize: '13px', marginBottom: '10px', color: 'var(--ink)' }}>Resumen del Hospedaje</h3>
+            <div style={{ background: 'var(--surface-2, #f8fafc)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
+                <span>Alojamiento ({currentRes.guestCount} pers)</span>
+                <strong>{lodgingTotal.toFixed(2)} {defaultCurrency}</strong>
+              </div>
+              {deposit > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px', color: 'var(--muted)' }}>
+                  <span>Depósito / Garantía</span>
+                  <span>{deposit.toFixed(2)} BOB</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--line)', fontSize: '14px', fontWeight: 700 }}>
+                <span>Total a Cobrar</span>
+                <span>{lodgingTotal.toFixed(2)} {defaultCurrency}</span>
+              </div>
+            </div>
+
+            {lodgingTotal > 0 && (
+              <div style={{ marginBottom: '8px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={payNow}
+                    onChange={(e) => {
+                      setPayNow(e.target.checked)
+                      if (e.target.checked) {
+                        setPayReceived(lodgingTotal)
+                        setPayCurrency(defaultCurrency)
+                      }
+                    }}
+                  />
+                  Cobrar alojamiento ahora
+                </label>
+
+                {payNow && (
+                  <div style={{ marginTop: '10px', padding: '12px', background: 'var(--surface-2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                    {!isShiftOpen && (
+                      <div className="form-error" style={{ marginBottom: '8px' }}>
+                        <AlertTriangle size={14} /> Sin turno de caja abierto. No se puede cobrar.
+                      </div>
+                    )}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
+                      <div>
+                        <label style={{ fontSize: '12px' }}>Método *</label>
+                        <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as 'cash' | 'card' | 'transfer' | 'qr')} disabled={!isShiftOpen}>
+                          <option value="cash">💵 Efectivo</option>
+                          <option value="card">💳 Tarjeta</option>
+                          <option value="qr">📱 QR</option>
+                          <option value="transfer">🏦 Transferencia</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label style={{ fontSize: '12px' }}>Moneda *</label>
+                        <select value={payCurrency} onChange={(e) => setPayCurrency(e.target.value)} disabled={!isShiftOpen}>
+                          {CURRENCIES.slice(0, 6).map((c) => (
+                            <option key={c.code} value={c.code}>{c.code}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '12px' }}>Monto recibido *</label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={payReceived}
+                        onChange={(e) => setPayReceived(Number(e.target.value))}
+                        disabled={!isShiftOpen}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

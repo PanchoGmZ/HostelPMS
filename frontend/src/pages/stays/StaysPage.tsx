@@ -402,6 +402,7 @@ export function StaysPage() {
           rooms={rooms}
           guests={guests}
           reservations={reservations.filter((r) => r.status === 'confirmed')}
+          activeCashShift={null}
           onClose={() => setShowCheckInModal(false)}
           onSuccess={(msg) => {
             setShowCheckInModal(false)
