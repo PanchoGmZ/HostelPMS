@@ -19,15 +19,20 @@ import {
 } from 'lucide-react'
 
 import { useAuth } from '../../context/useAuth'
-import { checkOutGuest, listStays } from '../../services/stays/staysService'
+import { listStays } from '../../services/stays/staysService'
 import { listRooms } from '../../services/rooms/roomsService'
 import { searchGuests } from '../../services/guests/guestsService'
 import { listReservations } from '../../services/reservations/reservationsService'
+import { listCashShifts } from '../../services/cash/cashService'
 import type { Stay, StayStatus } from '../../types/stays'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 import type { Reservation } from '../../types/reservations'
+import type { CashShift } from '../../types/cash'
 import { CheckInModal } from '../../components/reception/CheckInModal'
+import { ExtendStayModal } from '../../components/reception/ExtendStayModal'
+import { ChangeRoomModal } from '../../components/reception/ChangeRoomModal'
+import { CheckoutModal } from '../../components/reception/CheckoutModal'
 import './StaysPage.css'
 
 function formatDate(value?: { seconds: number } | null) {
@@ -67,6 +72,7 @@ export function StaysPage() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [guests, setGuests] = useState<Guest[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
+  const [activeCashShift, setActiveCashShift] = useState<CashShift | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -79,24 +85,29 @@ export function StaysPage() {
   // Modals
   const [showCheckInModal, setShowCheckInModal] = useState(false)
   const [selectedStayDetail, setSelectedStayDetail] = useState<Stay | null>(null)
-  const [stayToCheckout, setStayToCheckout] = useState<Stay | null>(null)
-  const [checkingOut, setCheckingOut] = useState(false)
+  
+  const [checkoutStay, setCheckoutStay] = useState<Stay | null>(null)
+  const [extendStayStay, setExtendStayStay] = useState<Stay | null>(null)
+  const [changeRoomStay, setChangeRoomStay] = useState<Stay | null>(null)
 
   const load = useCallback(async () => {
     if (!establishmentId) return
     setLoading(true)
     setError(null)
     try {
-      const [nextStays, nextRooms, nextGuests, nextReservations] = await Promise.all([
+      const [nextStays, nextRooms, nextGuests, nextReservations, shifts] = await Promise.all([
         listStays(establishmentId),
         listRooms(establishmentId),
         searchGuests(establishmentId, ''),
         listReservations(establishmentId),
+        listCashShifts(establishmentId),
       ])
       setStays(nextStays)
       setRooms(nextRooms)
       setGuests(nextGuests)
       setReservations(nextReservations)
+      const shift = shifts.find((s) => s.status === 'open') ?? null
+      setActiveCashShift(shift)
     } catch {
       setError('No se pudieron cargar las estadías. Verifica tu conexión.')
     } finally {
@@ -125,29 +136,6 @@ export function StaysPage() {
     })
   }, [stays, statusFilter, searchQuery, guests, rooms])
 
-  const confirmCheckOut = async () => {
-    if (!stayToCheckout || !establishmentId) return
-    setCheckingOut(true)
-    setError(null)
-    try {
-      await checkOutGuest({
-        establishmentId,
-        stayId: stayToCheckout.id,
-      })
-      setSuccessMessage('Check-out procesado exitosamente.')
-      setStayToCheckout(null)
-      setSelectedStayDetail(null)
-      void load()
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Error al procesar check-out'
-      setError(
-        `No se pudo completar el Check-out: ${errMsg}. Nota: La Cloud Function 'checkOutGuest' debe estar desplegada en el backend.`
-      )
-      setStayToCheckout(null)
-    } finally {
-      setCheckingOut(false)
-    }
-  }
 
   const activeStaysCount = stays.filter((s) => s.status === 'active').length
 
@@ -360,20 +348,36 @@ export function StaysPage() {
                   >
                     <Eye size={16} /> Detalle
                   </button>
-                  <button className="btn-folio" type="button" disabled>
-                    Folio & Consumos
-                  </button>
 
                   {stay.status === 'active' && (
-                    <button
-                      className="btn-checkout"
-                      type="button"
-                      title="Realizar check-out"
-                      onClick={() => setStayToCheckout(stay)}
-                    >
-                      <LogOut size={16} /> Check-out
-                      <span className="btn-subtext">Finalizar</span>
-                    </button>
+                    <>
+                      <button
+                        className="btn-detalle"
+                        type="button"
+                        style={{ color: 'var(--coral)' }}
+                        title="Cambiar habitación o cama"
+                        onClick={() => setChangeRoomStay(stay)}
+                      >
+                        <BedDouble size={16} /> Cambiar
+                      </button>
+                      <button
+                        className="btn-detalle"
+                        type="button"
+                        style={{ color: 'var(--coral)' }}
+                        title="Extender estadía"
+                        onClick={() => setExtendStayStay(stay)}
+                      >
+                        <Calendar size={16} /> Extender
+                      </button>
+                      <button
+                        className="btn-checkout"
+                        type="button"
+                        title="Realizar check-out"
+                        onClick={() => setCheckoutStay(stay)}
+                      >
+                        <LogOut size={16} /> Check-out
+                      </button>
+                    </>
                   )}
                 </div>
               </article>
@@ -402,7 +406,7 @@ export function StaysPage() {
           rooms={rooms}
           guests={guests}
           reservations={reservations.filter((r) => r.status === 'confirmed')}
-          activeCashShift={null}
+          activeCashShift={activeCashShift}
           onClose={() => setShowCheckInModal(false)}
           onSuccess={(msg) => {
             setShowCheckInModal(false)
@@ -422,52 +426,63 @@ export function StaysPage() {
           reservations={reservations}
           onClose={() => setSelectedStayDetail(null)}
           onCheckOutRequest={(stay) => {
-            setStayToCheckout(stay)
+            setCheckoutStay(stay)
           }}
         />
       )}
 
-      {/* Modal de Confirmación de Check-Out */}
-      {stayToCheckout && (
-        <div className="modal-backdrop">
-          <div className="modal-form" style={{ maxWidth: '420px' }}>
-            <div className="modal-header">
-              <div>
-                <span className="kicker" style={{ color: 'var(--coral)' }}>Finalizar estadía</span>
-                <h2>Confirmar Check-out</h2>
-              </div>
-              <button type="button" onClick={() => setStayToCheckout(null)}>
-                <X size={19} />
-              </button>
-            </div>
-            <p style={{ fontSize: '13px', color: 'var(--muted)', lineHeight: '1.5' }}>
-              ¿Deseas registrar el Check-out para el huésped{' '}
-              <strong>
-                {guests.find((g) => stayToCheckout.guestIds.includes(g.id))?.firstName ?? 'titular'}
-              </strong>
-              ? Se liberará(n) la(s) cama(s) en la recepción.
-            </p>
-            <div className="modal-actions" style={{ marginTop: '16px' }}>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setStayToCheckout(null)}
-                disabled={checkingOut}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="primary-button"
-                style={{ background: 'var(--coral)' }}
-                onClick={confirmCheckOut}
-                disabled={checkingOut}
-              >
-                {checkingOut ? 'Procesando...' : 'Confirmar Check-out'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Modal de Confirmación de Check-Out (Nuevo) */}
+      {checkoutStay && (
+        <CheckoutModal
+          establishmentId={establishmentId}
+          stay={checkoutStay}
+          guest={guests.find((g) => checkoutStay.guestIds.includes(g.id))}
+          activeCashShift={activeCashShift}
+          onClose={() => setCheckoutStay(null)}
+          onExtendStay={() => {
+            setCheckoutStay(null)
+            setExtendStayStay(checkoutStay)
+          }}
+          onSuccess={(msg) => {
+            setCheckoutStay(null)
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {/* Modal Extend Stay */}
+      {extendStayStay && (
+        <ExtendStayModal
+          establishmentId={establishmentId}
+          stay={extendStayStay}
+          rooms={rooms}
+          activeCashShift={activeCashShift}
+          onClose={() => setExtendStayStay(null)}
+          onSuccess={(msg) => {
+            setExtendStayStay(null)
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {/* Modal Change Room */}
+      {changeRoomStay && (
+        <ChangeRoomModal
+          establishmentId={establishmentId}
+          stay={changeRoomStay}
+          rooms={rooms}
+          onClose={() => setChangeRoomStay(null)}
+          onSuccess={(msg) => {
+            setChangeRoomStay(null)
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(msg) => setError(msg)}
+        />
       )}
     </div>
   )
@@ -609,7 +624,7 @@ function StayDetailModal({
                 onCheckOutRequest(stay)
               }}
             >
-              <LogOut size={16} /> Realizar Check-out
+              <LogOut size={16} /> Ir a Check-out
             </button>
           )}
         </div>

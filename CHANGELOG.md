@@ -1,5 +1,12 @@
 # Changelog — Pata y Perro PMS
 
+## v1.17.1
+Fecha: 2026-10-06
+
+- Acciones de estadía visibles directamente desde Recepción y Estadías.
+- Acceso a Cambio de habitación/cama.
+- Acceso directo a Extender estadía.
+- Acciones financieras y Check-out más accesibles y funcionales, corrigiendo la visibilidad del pago integrado por falta del turno de caja en la página Estadías.
 ## v1.17
 Fecha: 2026-10-06
 
