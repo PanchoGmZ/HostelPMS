@@ -20,6 +20,7 @@ import type { Stay } from '../../types/stays'
 import type { Guest } from '../../types/guests'
 import type { Folio } from '../../types/folios'
 import type { Room, Bed } from '../../types/rooms'
+import { NightlyPaymentOverview } from './NightlyPaymentOverview'
 
 interface GuestStayDrawerProps {
   stay: Stay
@@ -160,6 +161,12 @@ export function GuestStayDrawer({
               </div>
             </div>
           )}
+
+          <NightlyPaymentOverview
+            stay={stay}
+            folio={folio}
+            referenceDateStr={new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())}
+          />
 
           {/* Balance Spotlight Card */}
           <div className={`drawer-balance-card ${hasDebt ? 'debt' : 'cleared'}`}>

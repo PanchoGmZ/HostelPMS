@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useRef, type FormEvent } from 'react'
 import { X, AlertTriangle, ShieldAlert, Loader2, CheckCircle2 } from 'lucide-react'
 import { processPayment } from '../../services/payments/paymentsService'
 import type { Stay } from '../../types/stays'
-import type { Folio } from '../../types/folios'
 import type { CashShift } from '../../types/cash'
-import { CURRENCIES } from '../../utils/currencies'
+import type { Folio, PaymentAllocation } from '../../types/folios'
+import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
+import { calculateNightlyStatus } from '../../utils/folioCalculations'
 
 interface PaymentModalProps {
   establishmentId: string
@@ -26,14 +27,12 @@ export function PaymentModal({
   onError,
 }: PaymentModalProps) {
   const currentBalance = folio?.balance ?? 0
-  const [amount, setAmount] = useState<number>(currentBalance > 0 ? currentBalance : 0)
-  const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
-  const [reference, setReference] = useState<string>('')
-  const [currencyCode, setCurrencyCode] = useState<string>('BOB')
-  const [receivedAmount, setReceivedAmount] = useState<number>(currentBalance > 0 ? currentBalance : 0)
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
 
   const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
 
@@ -46,7 +45,7 @@ export function PaymentModal({
       return
     }
 
-    if (amount <= 0) {
+    if (!paymentData || paymentData.amount <= 0) {
       setFormError('El monto del pago debe ser mayor a 0.')
       return
     }
@@ -56,14 +55,20 @@ export function PaymentModal({
       await processPayment({
         establishmentId,
         stayId: stay.id,
-        amount,
-        method,
-        reference: reference.trim() || null,
-        currencyCode,
-        receivedAmount,
+        amount: paymentData.amount,
+        method: paymentData.method,
+        reference: paymentData.reference.trim() || null,
+        currencyCode: paymentData.currencyCode,
+        receivedAmount: paymentData.receivedAmount,
+        idempotencyKey: idempotencyKeyRef.current,
+        expectedBalance: currentBalance,
+        allocations: paymentData.allocations,
       })
 
-      onSuccess(`¡Pago de ${receivedAmount} ${currencyCode} registrado exitosamente!`)
+      // Reset idempotency key for future payments (though modal will close)
+      idempotencyKeyRef.current = crypto.randomUUID()
+
+      onSuccess(`¡Pago de ${paymentData.receivedAmount} ${paymentData.currencyCode} registrado exitosamente!`)
       onClose()
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al registrar el pago'
@@ -127,74 +132,27 @@ export function PaymentModal({
           </strong>
         </div>
 
-        {/* Amount to pay */}
-        <div style={{ marginBottom: '12px' }}>
-          <label>Monto a pagar aplicado a folio (BOB) *</label>
-          <input
-            type="number"
-            step="0.5"
-            min="0.5"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-            required
-            disabled={!isShiftOpen}
-          />
-        </div>
-
-        {/* Currency & Received Amount */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-          <div>
-            <label>Moneda recibida *</label>
-            <select
-              value={currencyCode}
-              onChange={(e) => setCurrencyCode(e.target.value)}
-              disabled={!isShiftOpen}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.code} — {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label>Monto recibido físico *</label>
-            <input
-              type="number"
-              step="0.01"
-              min="0.01"
-              value={receivedAmount}
-              onChange={(e) => setReceivedAmount(Number(e.target.value))}
-              required
-              disabled={!isShiftOpen}
-            />
-          </div>
-        </div>
-
-        {/* Payment method */}
-        <div style={{ marginBottom: '12px' }}>
-          <label>Método de Pago *</label>
-          <select
-            value={method}
-            onChange={(e) => setMethod(e.target.value as 'cash' | 'card' | 'transfer' | 'qr')}
-            disabled={!isShiftOpen}
-          >
-            <option value="cash">💵 Efectivo</option>
-            <option value="card">💳 Tarjeta de Débito / Crédito</option>
-            <option value="qr">📱 Pago QR</option>
-            <option value="transfer">🏦 Transferencia Bancaria</option>
-          </select>
-        </div>
-
-        {/* Reference */}
-        <div style={{ marginBottom: '14px' }}>
-          <label>Referencia o Nº Comprobante (opcional)</label>
-          <input
-            type="text"
-            placeholder="Ej: Nº de autorización, comprobante QR..."
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            disabled={!isShiftOpen}
+        {/* Use IntegratedPayment with showIntentOptions=false so it forces payment */}
+        <div style={{ marginBottom: '16px' }}>
+          <IntegratedPayment
+            totalCharges={currentBalance}
+            alreadyPaid={0}
+            isShiftOpen={isShiftOpen}
+            defaultCurrency={folio?.currency ?? 'BOB'}
+            onChange={setPaymentData}
+            showIntentOptions={false}
+            showAllocations={true}
+            suggestedAllocations={(() => {
+              if (!folio) return []
+              const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+              const calc = calculateNightlyStatus(stay, null as any, folio, todayStr)
+              const sugg: PaymentAllocation[] = []
+              // convert from cents back to BOB for the component
+              if (calc.summary.lodgingDebtInitiated > 0) sugg.push({ type: 'lodging', amount: calc.summary.lodgingDebtInitiated / 100 })
+              if (calc.summary.totalConsumptionsPending > 0) sugg.push({ type: 'consumption', amount: calc.summary.totalConsumptionsPending / 100 })
+              if (calc.summary.totalOtherPending > 0) sugg.push({ type: 'other', amount: calc.summary.totalOtherPending / 100 })
+              return sugg
+            })()}
           />
         </div>
 

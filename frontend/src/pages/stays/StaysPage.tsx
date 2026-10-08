@@ -15,7 +15,6 @@ import {
   LogOut,
   Search,
   ShieldCheck,
-  X,
 } from 'lucide-react'
 
 import { useAuth } from '../../context/useAuth'
@@ -23,6 +22,7 @@ import { listStays } from '../../services/stays/staysService'
 import { listRooms } from '../../services/rooms/roomsService'
 import { searchGuests } from '../../services/guests/guestsService'
 import { listReservations } from '../../services/reservations/reservationsService'
+import { listFolios } from '../../services/folios/foliosService'
 import { listCashShifts } from '../../services/cash/cashService'
 import type { Stay, StayStatus } from '../../types/stays'
 import type { Room } from '../../types/rooms'
@@ -33,16 +33,12 @@ import { CheckInModal } from '../../components/reception/CheckInModal'
 import { ExtendStayModal } from '../../components/reception/ExtendStayModal'
 import { ChangeRoomModal } from '../../components/reception/ChangeRoomModal'
 import { CheckoutModal } from '../../components/reception/CheckoutModal'
+import { GuestStayDrawer } from '../../components/reception/GuestStayDrawer'
+import { FastPOSModal } from '../../components/reception/FastPOSModal'
+import { PaymentModal } from '../../components/reception/PaymentModal'
+import type { Folio } from '../../types/folios'
 import './StaysPage.css'
 
-function formatDate(value?: { seconds: number } | null) {
-  if (!value?.seconds) return '-'
-  return new Date(value.seconds * 1000).toLocaleDateString('es-BO', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  })
-}
 
 function formatDayMonthYearSplit(value?: { seconds: number } | null) {
   if (!value?.seconds) return { dayMonth: '-', year: '' }
@@ -53,16 +49,6 @@ function formatDayMonthYearSplit(value?: { seconds: number } | null) {
   }
 }
 
-function formatDateTime(value?: { seconds: number } | null) {
-  if (!value?.seconds) return '-'
-  return new Date(value.seconds * 1000).toLocaleString('es-BO', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
 
 export function StaysPage() {
   const { session } = useAuth()
@@ -72,6 +58,7 @@ export function StaysPage() {
   const [rooms, setRooms] = useState<Room[]>([])
   const [guests, setGuests] = useState<Guest[]>([])
   const [reservations, setReservations] = useState<Reservation[]>([])
+  const [folios, setFolios] = useState<Folio[]>([])
   const [activeCashShift, setActiveCashShift] = useState<CashShift | null>(null)
 
   const [loading, setLoading] = useState(true)
@@ -86,6 +73,8 @@ export function StaysPage() {
   const [showCheckInModal, setShowCheckInModal] = useState(false)
   const [selectedStayDetail, setSelectedStayDetail] = useState<Stay | null>(null)
   
+  const [posData, setPosData] = useState<{ stay: Stay; folio?: Folio } | null>(null)
+  const [paymentData, setPaymentData] = useState<{ stay: Stay; folio?: Folio } | null>(null)
   const [checkoutStay, setCheckoutStay] = useState<Stay | null>(null)
   const [extendStayStay, setExtendStayStay] = useState<Stay | null>(null)
   const [changeRoomStay, setChangeRoomStay] = useState<Stay | null>(null)
@@ -95,17 +84,19 @@ export function StaysPage() {
     setLoading(true)
     setError(null)
     try {
-      const [nextStays, nextRooms, nextGuests, nextReservations, shifts] = await Promise.all([
+      const [nextStays, nextRooms, nextGuests, nextReservations, nextFolios, shifts] = await Promise.all([
         listStays(establishmentId),
         listRooms(establishmentId),
         searchGuests(establishmentId, ''),
         listReservations(establishmentId),
+        listFolios(establishmentId),
         listCashShifts(establishmentId),
       ])
       setStays(nextStays)
       setRooms(nextRooms)
       setGuests(nextGuests)
       setReservations(nextReservations)
+      setFolios(nextFolios)
       const shift = shifts.find((s) => s.status === 'open') ?? null
       setActiveCashShift(shift)
     } catch {
@@ -417,16 +408,25 @@ export function StaysPage() {
         />
       )}
 
-      {/* Modal de Detalle de Estadía */}
+      {/* Drawer de Detalle de Estadía */}
       {selectedStayDetail && (
-        <StayDetailModal
+        <GuestStayDrawer
           stay={selectedStayDetail}
-          rooms={rooms}
-          guests={guests}
-          reservations={reservations}
+          guest={guests.find((g) => selectedStayDetail.guestIds.includes(g.id))}
+          folio={folios.find((f) => f.stayId === selectedStayDetail.id)}
+          room={rooms.find((r) => r.id === selectedStayDetail.roomId)}
+          bed={rooms.find((r) => r.id === selectedStayDetail.roomId)?.beds.find((b) => selectedStayDetail.bedIds?.includes(b.id))}
           onClose={() => setSelectedStayDetail(null)}
-          onCheckOutRequest={(stay) => {
+          onAddConsumption={(stay, folio) => setPosData({ stay, folio })}
+          onRecordPayment={(stay, folio) => setPaymentData({ stay, folio })}
+          onCheckout={(stay) => {
             setCheckoutStay(stay)
+          }}
+          onExtendStay={(stay) => {
+            setExtendStayStay(stay)
+          }}
+          onChangeRoom={(stay) => {
+            setChangeRoomStay(stay)
           }}
         />
       )}
@@ -457,6 +457,7 @@ export function StaysPage() {
         <ExtendStayModal
           establishmentId={establishmentId}
           stay={extendStayStay}
+          folio={folios.find((f) => f.stayId === extendStayStay.id)}
           rooms={rooms}
           activeCashShift={activeCashShift}
           onClose={() => setExtendStayStay(null)}
@@ -475,6 +476,7 @@ export function StaysPage() {
           establishmentId={establishmentId}
           stay={changeRoomStay}
           rooms={rooms}
+          currentRoom={rooms.find(r => r.id === changeRoomStay.roomId)}
           onClose={() => setChangeRoomStay(null)}
           onSuccess={(msg) => {
             setChangeRoomStay(null)
@@ -484,151 +486,41 @@ export function StaysPage() {
           onError={(msg) => setError(msg)}
         />
       )}
+
+      {/* Fast POS Modal */}
+      {posData && (
+        <FastPOSModal
+          establishmentId={establishmentId}
+          stay={posData.stay}
+          folio={posData.folio}
+          products={[]} // Not loaded in StaysPage normally, but enough for testing POS modal integration
+          onClose={() => setPosData(null)}
+          onSuccess={(msg) => {
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(err) => setError(err)}
+        />
+      )}
+
+      {/* Payment Modal */}
+      {paymentData && (
+        <PaymentModal
+          establishmentId={establishmentId}
+          stay={paymentData.stay}
+          folio={paymentData.folio}
+          activeCashShift={activeCashShift}
+          onClose={() => setPaymentData(null)}
+          onSuccess={(msg) => {
+            setSuccessMessage(msg)
+            void load()
+          }}
+          onError={(err) => setError(err)}
+        />
+      )}
     </div>
   )
 }
 
 
 
-interface StayDetailModalProps {
-  stay: Stay
-  rooms: Room[]
-  guests: Guest[]
-  reservations: Reservation[]
-  onClose: () => void
-  onCheckOutRequest: (stay: Stay) => void
-}
-
-function StayDetailModal({
-  stay,
-  rooms,
-  guests,
-  reservations,
-  onClose,
-  onCheckOutRequest,
-}: StayDetailModalProps) {
-  const room = rooms.find((r) => r.id === stay.roomId)
-  const stayGuests = guests.filter((g) => stay.guestIds.includes(g.id))
-  const linkedRes = reservations.find((r) => r.id === stay.reservationId)
-  const assignedBeds = room?.beds.filter((b) => stay.bedIds.includes(b.id))
-
-  return (
-    <div className="modal-backdrop">
-      <div className="modal-form" style={{ maxWidth: '520px', width: '90%' }}>
-        <div className="modal-header">
-          <div>
-            <span className="kicker">Detalle de estadía</span>
-            <h2>Estadía #{stay.id.slice(0, 8)}</h2>
-          </div>
-          <button type="button" onClick={onClose}>
-            <X size={19} />
-          </button>
-        </div>
-
-        <div style={{ display: 'grid', gap: '14px', fontSize: '13px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--paper)', padding: '10px 14px', borderRadius: '6px' }}>
-            <span>Estado:</span>
-            <span
-              className="stay-status"
-              style={{
-                background: stay.status === 'active' ? '#dcece3' : '#eef1f0',
-                color: stay.status === 'active' ? '#1b5e30' : '#5a6c66',
-              }}
-            >
-              {stay.status === 'active' ? 'Estadía Activa' : 'Finalizada (Checked-out)'}
-            </span>
-          </div>
-
-          <div>
-            <strong>Huéspedes alojados:</strong>
-            <ul style={{ margin: '6px 0 0', paddingLeft: '18px', color: 'var(--ink)' }}>
-              {stayGuests.length > 0 ? (
-                stayGuests.map((g) => (
-                  <li key={g.id}>
-                    {g.firstName} {g.lastName} {g.documentNumber ? `(Doc: ${g.documentNumber})` : ''}
-                  </li>
-                ))
-              ) : (
-                <li>Huésped ID: {stay.guestIds.join(', ')}</li>
-              )}
-            </ul>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Habitación:</small>
-              <div><strong>{room?.name ?? stay.roomId}</strong></div>
-            </div>
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Camas asignadas:</small>
-              <div>
-                <strong>
-                  {assignedBeds && assignedBeds.length > 0
-                    ? assignedBeds.map((b) => b.label).join(', ')
-                    : stay.bedIds.join(', ')}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Fecha de Entrada:</small>
-              <div><strong>{formatDateTime(stay.checkInDate)}</strong></div>
-            </div>
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Salida Prevista:</small>
-              <div><strong>{formatDate(stay.expectedCheckOutDate)}</strong></div>
-            </div>
-          </div>
-
-          {stay.actualCheckOutDate && (
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Salida Realizada:</small>
-              <div><strong>{formatDateTime(stay.actualCheckOutDate)}</strong></div>
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Depósito de garantía:</small>
-              <div><strong>{stay.deposit ?? 0} BOB</strong></div>
-            </div>
-            <div>
-              <small style={{ color: 'var(--muted)' }}>Documento verificado:</small>
-              <div><strong>{stay.documentVerified ? 'Sí ✓' : 'No ✗'}</strong></div>
-            </div>
-          </div>
-
-          {linkedRes && (
-            <div style={{ background: '#f0f4f2', padding: '10px 12px', borderRadius: '6px' }}>
-              <small style={{ color: 'var(--muted)' }}>Reserva vinculada:</small>
-              <div>
-                <strong>Reserva #{linkedRes.id.slice(0, 8)}</strong> ({linkedRes.channel})
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="modal-actions" style={{ marginTop: '16px' }}>
-          <button className="secondary-button" type="button" onClick={onClose}>
-            Cerrar
-          </button>
-          {stay.status === 'active' && (
-            <button
-              className="primary-button"
-              type="button"
-              style={{ background: 'var(--coral)' }}
-              onClick={() => {
-                onClose()
-                onCheckOutRequest(stay)
-              }}
-            >
-              <LogOut size={16} /> Ir a Check-out
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}

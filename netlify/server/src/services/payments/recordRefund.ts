@@ -96,6 +96,27 @@ export async function recordRefundService(
       const refundId = crypto.randomUUID();
       finalRefundId = refundId;
 
+      let refundAllocations: any[] | undefined = undefined;
+      if (originalPayment.allocations && originalPayment.allocations.length > 0) {
+        refundAllocations = originalPayment.allocations.map((alloc: any) => {
+          const fraction = alloc.amount / originalPayment.amount;
+          return {
+            type: alloc.type,
+            amount: -(Math.round(amount * fraction * 100) / 100)
+          };
+        });
+
+        let totalRefundedCents = 0;
+        for (const alloc of refundAllocations!) {
+          totalRefundedCents += Math.round(alloc.amount * 100);
+        }
+        const targetCents = -Math.round(amount * 100);
+        const diffCents = targetCents - totalRefundedCents;
+        if (diffCents !== 0 && refundAllocations && refundAllocations.length > 0) {
+          refundAllocations[0].amount = (Math.round(refundAllocations[0].amount * 100) + diffCents) / 100;
+        }
+      }
+
       const updatedPayments = [
         ...payments,
         {
@@ -108,6 +129,7 @@ export async function recordRefundService(
           reference: `Reembolso de ${paymentId}`,
           currencyCode: originalPayment.currencyCode || 'BOB',
           receivedAmount: -amount,
+          allocations: refundAllocations,
           createdAt: Timestamp.now(),
         },
       ];

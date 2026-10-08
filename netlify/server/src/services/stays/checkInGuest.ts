@@ -153,7 +153,7 @@ export async function checkInGuestService(
 
       if (initialPayment && typeof initialPayment.amount === 'number' && initialPayment.amount > 0) {
         const payId = db.collection('dummy').doc().id;
-        totalPaidInitial = initialPayment.amount;
+        totalPaidInitial += initialPayment.amount;
         paymentEntries.push({
           id: payId,
           amount: initialPayment.amount,
@@ -162,10 +162,13 @@ export async function checkInGuestService(
           reference: initialPayment.reference || null,
           currencyCode: initialPayment.currencyCode || 'BOB',
           receivedAmount: typeof initialPayment.receivedAmount === 'number' ? initialPayment.receivedAmount : initialPayment.amount,
+          allocations: [{ type: 'lodging', amount: initialPayment.amount }],
           createdAt: Timestamp.now(),
         });
-      } else if (deposit && deposit > 0) {
-        totalPaidInitial = deposit;
+      }
+      
+      if (deposit && deposit > 0) {
+        totalPaidInitial += deposit;
         paymentEntries.push({
           id: db.collection('dummy').doc().id,
           amount: deposit,
@@ -174,6 +177,7 @@ export async function checkInGuestService(
           reference: null,
           currencyCode: 'BOB',
           receivedAmount: deposit,
+          allocations: [{ type: 'unassigned', amount: deposit }],
           createdAt: Timestamp.now(),
         });
       }

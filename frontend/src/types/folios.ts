@@ -6,7 +6,14 @@ export interface Charge {
   amount: number
   status: string
   productId?: string | null
+  type?: string
+  serviceDate?: { seconds: number }
   createdAt: { seconds: number }
+}
+
+export interface PaymentAllocation {
+  type: 'lodging' | 'consumption' | 'other' | 'unassigned'
+  amount: number
 }
 
 export interface Payment {
@@ -17,6 +24,7 @@ export interface Payment {
   reference?: string | null
   currencyCode?: string
   receivedAmount?: number
+  allocations?: PaymentAllocation[]
   createdAt: { seconds: number }
 }
 
@@ -56,6 +64,9 @@ export interface RecordPaymentPayload {
   reference?: string | null
   currencyCode?: string
   receivedAmount?: number
+  idempotencyKey?: string
+  expectedBalance?: number
+  allocations?: PaymentAllocation[]
 }
 
 export type ProcessPaymentPayload = RecordPaymentPayload

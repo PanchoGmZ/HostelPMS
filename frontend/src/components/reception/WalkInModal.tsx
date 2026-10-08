@@ -9,6 +9,8 @@ import type { Reservation } from '../../types/reservations'
 import type { Stay } from '../../types/stays'
 import { MultiGuestSection, createEmptySlot } from '../guests/MultiGuestSection'
 import type { GuestSlot } from '../guests/MultiGuestSection'
+import type { CashShift } from '../../types/cash'
+import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
 import { cleanDraft, countries } from '../guests/GuestInlineForm'
 
 interface WalkInModalProps {
@@ -19,6 +21,7 @@ interface WalkInModalProps {
   reservations?: Reservation[]
   stays?: Stay[]
   existingGuests: Guest[]
+  activeCashShift: CashShift | null
   onClose: () => void
   onSuccess: (message: string) => void
   onError: (error: string) => void
@@ -41,6 +44,7 @@ export function WalkInModal({
   reservations = [],
   stays = [],
   existingGuests,
+  activeCashShift,
   onClose,
   onSuccess,
   onError,
@@ -78,7 +82,6 @@ export function WalkInModal({
   // Stay parameters
   // v1.7-hotfix: number | '' para permitir campo vacío temporalmente sin cerrar modal
   const [nights, setNights] = useState<number | ''>(1)
-  const [deposit, setDeposit] = useState(0)
   const [guestCount, setGuestCount] = useState<number>(1)
 
   // v1.15: Multi-guest slots (reemplaza guestIds array de strings)
@@ -95,6 +98,8 @@ export function WalkInModal({
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [createdReservationId, setCreatedReservationId] = useState<string | null>(null)
+
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
 
   // v1.12: checkOutDateStr ahora parte desde checkInDateStr (no siempre desde hoy)
   const checkOutDateStr = useMemo(() => {
@@ -255,6 +260,13 @@ export function WalkInModal({
       }
     }
 
+    if (paymentData && paymentData.intent !== 'none' && paymentData.receivedAmount > 0) {
+      if (!activeCashShift || activeCashShift.status !== 'open') {
+        setFormError('No hay turno de caja abierto. Seleccione "Dejar pendiente" o abra un turno de caja primero.')
+        return
+      }
+    }
+
     setSubmitting(true)
     try {
       let currentResId = createdReservationId
@@ -361,8 +373,15 @@ export function WalkInModal({
           roomId: selectedRoomObj.id,
           bedIds: effectiveBedIds,
           expectedCheckOutDate: checkOutDateStr,
-          deposit,
+          deposit: 0,
           documentVerified: true,
+          initialPayment: (paymentData && paymentData.intent !== 'none' && paymentData.receivedAmount > 0) ? {
+            amount: paymentData.amount,
+            method: paymentData.method,
+            currencyCode: paymentData.currencyCode,
+            receivedAmount: paymentData.receivedAmount,
+            reference: paymentData.reference || undefined
+          } : undefined
         })
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Error al procesar check-in'
@@ -688,42 +707,31 @@ export function WalkInModal({
           </div>
         )}
 
-        {/* Noches y Depósito */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-          <div>
-            <label>Noches</label>
-            <input
-              id="walk-in-nights"
-              type="number"
-              min="1"
-              value={nights}
-              onChange={(e) => {
-                // v1.7-hotfix: permitir '' temporalmente — no colapsar a 1 mientras el usuario edita
-                const val = e.target.value
-                if (val === '') {
-                  setNights('')
-                } else {
-                  const n = parseInt(val, 10)
-                  if (!isNaN(n) && n >= 0) setNights(n)
-                }
-              }}
-              onKeyDown={(e) => {
-                // Prevenir que Enter en el input dispare submit o cierre el modal
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                }
-              }}
-            />
-          </div>
-          <div>
-            <label>Garantía / Depósito</label>
-            <input
-              type="number"
-              min="0"
-              value={deposit}
-              onChange={(e) => setDeposit(Number(e.target.value))}
-            />
-          </div>
+        {/* Noches */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Noches</label>
+          <input
+            id="walk-in-nights"
+            type="number"
+            min="1"
+            value={nights}
+            onChange={(e) => {
+              // v1.7-hotfix: permitir '' temporalmente — no colapsar a 1 mientras el usuario edita
+              const val = e.target.value
+              if (val === '') {
+                setNights('')
+              } else {
+                const n = parseInt(val, 10)
+                if (!isNaN(n) && n >= 0) setNights(n)
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+              }
+            }}
+            style={{ width: '100px' }}
+          />
         </div>
 
         {/* v1.7: Selector de Tarifa */}
@@ -799,6 +807,17 @@ export function WalkInModal({
               )}
             </div>
           )}
+        </div>
+
+        <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+          <h3 style={{ fontSize: '13px', marginBottom: '10px', color: 'var(--ink)' }}>Pago del Hospedaje</h3>
+          <IntegratedPayment
+            totalCharges={totalEstimate}
+            alreadyPaid={0}
+            isShiftOpen={!!activeCashShift && activeCashShift.status === 'open'}
+            defaultCurrency="BOB"
+            onChange={setPaymentData}
+          />
         </div>
 
         {/* Summary Card */}

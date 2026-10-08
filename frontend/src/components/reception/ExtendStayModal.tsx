@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useRef, type FormEvent } from 'react'
 import { X, Calendar, AlertTriangle, Loader2, ArrowRight, Plus } from 'lucide-react'
 import { extendStay } from '../../services/stays/staysService'
 import { processPayment } from '../../services/payments/paymentsService'
@@ -76,6 +76,8 @@ export function ExtendStayModal({
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
+
   const extraNights = useMemo(() => {
     const from = new Date(`${currentCheckOutStr}T12:00:00.000-04:00`)
     const to = new Date(`${newCheckOutDate}T12:00:00.000-04:00`)
@@ -129,8 +131,11 @@ export function ExtendStayModal({
           method: payMethod,
           currencyCode: payCurrency,
           receivedAmount: payReceived,
+          idempotencyKey: idempotencyKeyRef.current,
         })
       }
+
+      idempotencyKeyRef.current = crypto.randomUUID()
 
       onSuccess(`Estadía extendida hasta ${newCheckOutDate}. ${extraNights} noche(s) adicional(es) · ${extensionTotal} BOB.`)
       onClose()

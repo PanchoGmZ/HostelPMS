@@ -189,6 +189,7 @@ export async function addConsumptionService(
           reference: payNow.reference || null,
           currencyCode: payNow.currencyCode || 'BOB',
           receivedAmount: payNow.receivedAmount ?? totalAmount,
+          allocations: [{ type: 'consumption', amount: totalAmount }],
           createdAt: now,
         };
 

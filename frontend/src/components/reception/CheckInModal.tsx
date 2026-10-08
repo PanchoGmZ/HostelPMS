@@ -12,7 +12,7 @@ import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
 
 import type { CashShift } from '../../types/cash'
-import { CURRENCIES } from '../../utils/currencies'
+import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
 
 interface CheckInModalProps {
   establishmentId: string
@@ -76,7 +76,6 @@ export function CheckInModal({
 
   // Titular guest ID
   const [guestId, setGuestId] = useState<string>(currentRes?.primaryGuestId ?? '')
-  const [deposit, setDeposit] = useState<number>(0)
   const [documentVerified, setDocumentVerified] = useState<boolean>(true)
   const [submitting, setSubmitting] = useState(false)
   const [linkingGuest, setLinkingGuest] = useState(false)
@@ -98,10 +97,7 @@ export function CheckInModal({
   const lodgingTotal = currentRes?.totalAmount ?? 0
   const defaultCurrency = currentRes?.currency ?? 'BOB'
   
-  const [payNow, setPayNow] = useState(false)
-  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
-  const [payCurrency, setPayCurrency] = useState(defaultCurrency)
-  const [payReceived, setPayReceived] = useState<number>(0)
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
   
   const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
 
@@ -309,6 +305,13 @@ export function CheckInModal({
       }
     }
 
+    if (paymentData && paymentData.intent !== 'none' && paymentData.receivedAmount > 0) {
+      if (!isShiftOpen) {
+        setFormError('No hay turno de caja abierto. Seleccione "Dejar pendiente" o abra un turno de caja primero.')
+        return
+      }
+    }
+
     setSubmitting(true)
     try {
       // v1.15: Guardar acompañantes nuevos y recolectar IDs
@@ -342,14 +345,15 @@ export function CheckInModal({
         roomId: currentRes.roomId,
         bedIds: currentRes.bedIds,
         expectedCheckOutDate: expectedCheckOut,
-        deposit: Number(deposit) || 0,
+        deposit: 0,
         documentVerified,
         // v1.17: Pago inicial integrado
-        initialPayment: (payNow && payReceived > 0) ? {
-          amount: lodgingTotal,
-          method: payMethod,
-          currencyCode: payCurrency,
-          receivedAmount: payReceived,
+        initialPayment: (paymentData && paymentData.intent !== 'none' && paymentData.receivedAmount > 0) ? {
+          amount: paymentData.amount,
+          method: paymentData.method,
+          currencyCode: paymentData.currencyCode,
+          receivedAmount: paymentData.receivedAmount,
+          reference: paymentData.reference || undefined
         } : undefined,
       })
 
@@ -661,29 +665,16 @@ export function CheckInModal({
               </div>
             )}
 
-            {/* Depósito y Documento Verificado */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
-              <div>
-                <label style={{ fontSize: '12px', marginBottom: '2px', display: 'block' }}>Depósito / Garantía (BOB)</label>
+            {/* Documento Verificado */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', margin: 0, fontWeight: 500 }}>
                 <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={deposit}
-                  onChange={(e) => setDeposit(Number(e.target.value) || 0)}
-                  style={{ width: '100%' }}
+                  type="checkbox"
+                  checked={documentVerified}
+                  onChange={(e) => setDocumentVerified(e.target.checked)}
                 />
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', paddingTop: '18px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', cursor: 'pointer', margin: 0, fontWeight: 500 }}>
-                  <input
-                    type="checkbox"
-                    checked={documentVerified}
-                    onChange={(e) => setDocumentVerified(e.target.checked)}
-                  />
-                  Documento verificado
-                </label>
-              </div>
+                Verifiqué la identidad y documentos del titular
+              </label>
             </div>
           </div>
         )}
@@ -691,82 +682,14 @@ export function CheckInModal({
         {/* v1.17: Resumen de Hospedaje y Pago Integrado */}
         {!isQuickReservation && currentRes && (
           <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
-            <h3 style={{ fontSize: '13px', marginBottom: '10px', color: 'var(--ink)' }}>Resumen del Hospedaje</h3>
-            <div style={{ background: 'var(--surface-2, #f8fafc)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', marginBottom: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px' }}>
-                <span>Alojamiento ({currentRes.guestCount} pers)</span>
-                <strong>{lodgingTotal.toFixed(2)} {defaultCurrency}</strong>
-              </div>
-              {deposit > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '13px', color: 'var(--muted)' }}>
-                  <span>Depósito / Garantía</span>
-                  <span>{deposit.toFixed(2)} BOB</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--line)', fontSize: '14px', fontWeight: 700 }}>
-                <span>Total a Cobrar</span>
-                <span>{lodgingTotal.toFixed(2)} {defaultCurrency}</span>
-              </div>
-            </div>
-
-            {lodgingTotal > 0 && (
-              <div style={{ marginBottom: '8px' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600 }}>
-                  <input
-                    type="checkbox"
-                    checked={payNow}
-                    onChange={(e) => {
-                      setPayNow(e.target.checked)
-                      if (e.target.checked) {
-                        setPayReceived(lodgingTotal)
-                        setPayCurrency(defaultCurrency)
-                      }
-                    }}
-                  />
-                  Cobrar alojamiento ahora
-                </label>
-
-                {payNow && (
-                  <div style={{ marginTop: '10px', padding: '12px', background: 'var(--surface-2)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                    {!isShiftOpen && (
-                      <div className="form-error" style={{ marginBottom: '8px' }}>
-                        <AlertTriangle size={14} /> Sin turno de caja abierto. No se puede cobrar.
-                      </div>
-                    )}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                      <div>
-                        <label style={{ fontSize: '12px' }}>Método *</label>
-                        <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as 'cash' | 'card' | 'transfer' | 'qr')} disabled={!isShiftOpen}>
-                          <option value="cash">💵 Efectivo</option>
-                          <option value="card">💳 Tarjeta</option>
-                          <option value="qr">📱 QR</option>
-                          <option value="transfer">🏦 Transferencia</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label style={{ fontSize: '12px' }}>Moneda *</label>
-                        <select value={payCurrency} onChange={(e) => setPayCurrency(e.target.value)} disabled={!isShiftOpen}>
-                          {CURRENCIES.slice(0, 6).map((c) => (
-                            <option key={c.code} value={c.code}>{c.code}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '12px' }}>Monto recibido *</label>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={payReceived}
-                        onChange={(e) => setPayReceived(Number(e.target.value))}
-                        disabled={!isShiftOpen}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            <h3 style={{ fontSize: '13px', marginBottom: '10px', color: 'var(--ink)' }}>Pago del Hospedaje</h3>
+            <IntegratedPayment
+              totalCharges={lodgingTotal}
+              alreadyPaid={0}
+              isShiftOpen={isShiftOpen}
+              defaultCurrency={defaultCurrency}
+              onChange={setPaymentData}
+            />
           </div>
         )}
 

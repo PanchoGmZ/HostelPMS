@@ -22,6 +22,7 @@ import type { Product } from '../../types/inventory'
 
 import { ReceptionHeader } from '../../components/reception/ReceptionHeader'
 import { ArrivalsPanel, DeparturesPanel, PendingPanel } from '../../components/reception/DashboardPanels'
+import { DashboardStaysPanel } from '../../components/reception/DashboardStaysPanel'
 import { BedMatrix } from '../../components/reception/BedMatrix'
 import { GuestStayDrawer } from '../../components/reception/GuestStayDrawer'
 import { QuickActionModal } from '../../components/reception/QuickActionModal'
@@ -360,6 +361,15 @@ export function ReceptionPage() {
               }
             }}
           />
+          
+          <DashboardStaysPanel
+            stays={stays}
+            folios={folios}
+            guests={guests}
+            rooms={rooms}
+            onViewDetails={(stay) => setDrawerStay(stay)}
+            onRecordPayment={(stay, folio) => setPaymentData({ stay, folio })}
+          />
         </div>
 
         <div className={`dashboard-side-column ${mobileSidebarOpen ? 'mobile-open' : ''}`}>
@@ -447,6 +457,7 @@ export function ReceptionPage() {
           reservations={reservations}
           stays={stays}
           existingGuests={guests}
+          activeCashShift={activeCashShift}
           onClose={() => setWalkInBed(null)}
           onSuccess={(msg) => {
             setSuccessMessage(msg)

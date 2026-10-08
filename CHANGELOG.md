@@ -1,5 +1,22 @@
 # Changelog — Pata y Perro PMS
 
+## v1.19
+Fecha: 2026-10-08
+
+- **Control Financiero por Noches**: Motor puro de cálculo (`calculateNightlyStatus`) que determina noches reservadas, noches cubiertas, fecha cubierta ("Pagado hasta"), noches iniciadas adeudadas, noches futuras pactadas y desgloses de saldo en tiempo real.
+- **Asignaciones de Pago (`allocations`)**: Persistencia y validación backend en centavos enteros para clasificar cobros entre hospedaje, consumos u otros, evitando duplicidades y descuadres en el Folio.
+- **Control de Noches en Dashboard Operativo**: Acceso directo desde el panel operativo (`DashboardStaysPanel` y `NightlyPaymentOverview`) para visualizar noches cubiertas y registrar pagos sin fricción.
+- **Idempotencia Transaccional en Pagos**: Claves idempotentes (`idempotencyKey`) en transacciones de Folio y Caja (`recordPayment`, `CheckoutModal`, `PaymentModal`, `ExtendStayModal`) para prevenir dobles cobros ante reintentos de red.
+- **Tratamiento Seguro de Depósitos**: Corrección en `checkInGuest` para transferir depósitos previos sin duplicar ingresos en la sesión de caja activa.
+
+## v1.18
+Fecha: 2026-10-08
+
+- **Cobro Integrado en Recepción**: Experiencia unificada de pagos en Walk-in, Check-in y Checkout mediante el nuevo componente `IntegratedPayment`.
+- **Simplificación de pagos en BOB**: Eliminación del doble campo numérico (Monto Aplicado vs Monto Recibido) cuando la divisa es Bolivianos, previniendo errores de tipeo y descuadres.
+- **Normalización Numérica**: Los campos numéricos corrigen formato (elimina ceros iniciales como `01000`) automáticamente al perder foco.
+- **Opciones de Cobro unificadas**: Selección rápida entre 'Cobrar todo', 'Pago parcial' y 'Dejar pendiente' durante el alojamiento o salida.
+
 ## v1.17.1
 Fecha: 2026-10-06
 

@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, LogOut, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
 import { checkOutGuest } from '../../services/stays/staysService'
 import { getFolioByStayId } from '../../services/folios/foliosService'
 import { processPayment } from '../../services/payments/paymentsService'
 import type { Stay } from '../../types/stays'
-import type { Folio } from '../../types/folios'
+import type { Folio, PaymentAllocation } from '../../types/folios'
 import type { Guest } from '../../types/guests'
 import type { CashShift } from '../../types/cash'
+import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
+import { calculateNightlyStatus } from '../../utils/folioCalculations'
 
 interface CheckoutModalProps {
   establishmentId: string
@@ -56,15 +58,15 @@ export function CheckoutModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
+
   // v1.17: Fecha real de checkout y pago inline
   const expectedCheckOutStr = new Date(stay.expectedCheckOutDate.seconds * 1000).toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' })
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' })
   const [actualCheckOutDate, setActualCheckOutDate] = useState(todayStr)
   const isLate = actualCheckOutDate > expectedCheckOutStr
 
-  const [payInline, setPayInline] = useState(false)
-  const [payMethod, setPayMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
-  const [payReceived, setPayReceived] = useState<number>(0)
+  const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
   const payCurrency = actualFolio?.currency ?? 'BOB'
   
   const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
@@ -76,7 +78,8 @@ export function CheckoutModal({
       setError(`Calculando saldos, por favor espere...`)
       return
     }
-    if (hasDebt && !payInline) {
+    const isPaying = paymentData && paymentData.intent !== 'none' && paymentData.receivedAmount > 0;
+    if (hasDebt && !isPaying) {
       setError(`Existe un saldo pendiente. Selecciona pagar ahora o usa el botón de pago externo.`)
       return
     }
@@ -88,27 +91,54 @@ export function CheckoutModal({
     setSubmitting(true)
     setError(null)
     try {
+      let paymentProcessed = false;
+      let paymentAmount = 0;
+
       // 1. Cobrar inline si es necesario
-      if (hasDebt && payInline) {
+      if (hasDebt && isPaying) {
         if (!isShiftOpen) throw new Error('No hay turno de caja abierto')
-        if (payReceived <= 0) throw new Error('Ingresa un monto recibido válido')
         
         await processPayment({
           establishmentId,
           stayId: stay.id,
-          amount: pendingAmount,
-          method: payMethod,
-          currencyCode: payCurrency,
-          receivedAmount: payReceived,
+          amount: paymentData!.amount,
+          method: paymentData!.method,
+          currencyCode: paymentData!.currencyCode,
+          receivedAmount: paymentData!.receivedAmount,
+          reference: paymentData!.reference || null,
+          idempotencyKey: idempotencyKeyRef.current,
+          expectedBalance: (actualFolio?.totalCharges || 0) - (actualFolio?.totalPaid || 0),
+          allocations: paymentData!.allocations
         })
+        
+        paymentProcessed = true;
+        paymentAmount = paymentData!.amount;
+
+        // Refetch folio to prevent double charge if checkout fails
+        const updatedFolio = await getFolioByStayId(establishmentId, stay.id)
+        if (updatedFolio) {
+          setActualFolio(updatedFolio)
+          // Reset payment data intent so we don't try to pay again
+          setPaymentData(null)
+        }
       }
 
+      // Reset idempotency key for future payments (though modal will close)
+      idempotencyKeyRef.current = crypto.randomUUID()
+
       // 2. Checkout real
-      await checkOutGuest({
-        establishmentId,
-        stayId: stay.id,
-        actualCheckOutDate,
-      })
+      try {
+        await checkOutGuest({
+          establishmentId,
+          stayId: stay.id,
+          actualCheckOutDate,
+        })
+      } catch (checkoutErr) {
+        if (paymentProcessed) {
+          throw new Error(`Pago de ${paymentAmount} registrado. Check-out pendiente por error: ${checkoutErr instanceof Error ? checkoutErr.message : 'Desconocido'}`)
+        }
+        throw checkoutErr
+      }
 
       onSuccess(`¡Check-out completado! La cama quedó liberada y pendiente de aseo.`)
       onClose()
@@ -200,60 +230,28 @@ export function CheckoutModal({
           {/* Balance card y pago inline */}
           {hasDebt ? (
             <div className="stay-notice critical" style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                 <AlertTriangle size={18} />
                 <strong>Deuda de {pendingAmount.toFixed(2)} {actualFolio?.currency ?? 'BOB'}</strong>
               </div>
-              <p style={{ margin: 0, fontSize: '13px' }}>
-                Para completar la salida debes cobrar el total adeudado.
-              </p>
-
-              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, marginTop: '4px' }}>
-                <input
-                  type="checkbox"
-                  checked={payInline}
-                  onChange={(e) => {
-                    setPayInline(e.target.checked)
-                    if (e.target.checked) {
-                      setPayReceived(pendingAmount)
-                    }
-                  }}
-                />
-                Registrar pago ahora
-              </label>
-
-              {payInline && (
-                <div style={{ marginTop: '6px', background: 'var(--white)', padding: '10px', borderRadius: '6px', border: '1px solid #fca5a5' }}>
-                  {!isShiftOpen && (
-                    <div className="form-error" style={{ marginBottom: '8px', padding: '4px', fontSize: '12px' }}>
-                      <AlertTriangle size={12} /> Sin turno de caja abierto
-                    </div>
-                  )}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '8px' }}>
-                    <div>
-                      <label style={{ fontSize: '11px' }}>Método</label>
-                      <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as 'cash' | 'card' | 'transfer' | 'qr')} disabled={!isShiftOpen} style={{ padding: '4px', fontSize: '12px' }}>
-                        <option value="cash">Efectivo</option>
-                        <option value="card">Tarjeta</option>
-                        <option value="qr">QR</option>
-                        <option value="transfer">Transf.</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ fontSize: '11px' }}>Monto a recibir</label>
-                      <input
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={payReceived}
-                        onChange={(e) => setPayReceived(Number(e.target.value))}
-                        disabled={!isShiftOpen}
-                        style={{ padding: '4px', fontSize: '12px' }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              <IntegratedPayment
+                totalCharges={totalCharges}
+                alreadyPaid={totalPaid}
+                isShiftOpen={isShiftOpen}
+                defaultCurrency={payCurrency}
+                onChange={setPaymentData}
+                showIntentOptions={true}
+                showAllocations={true}
+                suggestedAllocations={(() => {
+                  if (!actualFolio) return []
+                  const calc = calculateNightlyStatus(stay, null as any, actualFolio, todayStr)
+                  const sugg: PaymentAllocation[] = []
+                  if (calc.summary.lodgingDebtInitiated > 0) sugg.push({ type: 'lodging', amount: calc.summary.lodgingDebtInitiated / 100 })
+                  if (calc.summary.totalConsumptionsPending > 0) sugg.push({ type: 'consumption', amount: calc.summary.totalConsumptionsPending / 100 })
+                  if (calc.summary.totalOtherPending > 0) sugg.push({ type: 'other', amount: calc.summary.totalOtherPending / 100 })
+                  return sugg
+                })()}
+              />
             </div>
           ) : (
             <div className="stay-notice success" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -273,7 +271,7 @@ export function CheckoutModal({
             type="button"
             className="danger-button"
             onClick={handleConfirmCheckout}
-            disabled={submitting || (hasDebt && !payInline) || isLate}
+            disabled={submitting || (hasDebt && (!paymentData || paymentData.intent === 'none')) || isLate}
           >
             {submitting ? (
               <>

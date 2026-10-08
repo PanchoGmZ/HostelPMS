@@ -11,6 +11,12 @@ export interface RecordPaymentPayload {
   reference?: string;
   currencyCode?: string;
   receivedAmount?: number;
+  idempotencyKey?: string;
+  expectedBalance?: number;
+  allocations?: {
+    type: 'lodging' | 'consumption' | 'other' | 'unassigned';
+    amount: number;
+  }[];
 }
 
 export interface RecordPaymentResult {
@@ -33,7 +39,7 @@ export async function recordPaymentService(
   getFirebaseAdmin();
   const db = getFirestore();
 
-  const { establishmentId, stayId, amount, method, reference, currencyCode, receivedAmount } = payload;
+  const { establishmentId, stayId, amount, method, reference, currencyCode, receivedAmount, idempotencyKey, expectedBalance, allocations } = payload;
 
   if (!establishmentId || !stayId || typeof amount !== 'number' || !method) {
     throw new PaymentError('Parámetros inválidos.');
@@ -50,7 +56,31 @@ export async function recordPaymentService(
   const estRef = db.collection('establishments').doc(establishmentId);
   const stayRef = estRef.collection('stays').doc(stayId);
 
+  let finalAllocations = allocations ? [...allocations] : [];
+  if (finalAllocations.length > 0) {
+    let totalAllocatedCents = 0;
+    const paymentAmountCents = Math.round(amount * 100);
+
+    for (const alloc of finalAllocations) {
+      if (typeof alloc.amount !== 'number' || !isFinite(alloc.amount) || alloc.amount < 0) {
+        throw new PaymentError('El monto de la asignación debe ser un número válido y no negativo.');
+      }
+      totalAllocatedCents += Math.round(alloc.amount * 100);
+    }
+
+    if (totalAllocatedCents > paymentAmountCents) {
+      throw new PaymentError(`Las asignaciones no pueden exceder el monto total del pago.`);
+    } else if (totalAllocatedCents < paymentAmountCents) {
+      const diffCents = paymentAmountCents - totalAllocatedCents;
+      finalAllocations.push({
+        type: 'unassigned',
+        amount: diffCents / 100
+      });
+    }
+  }
+
   let finalPaymentId = '';
+  let alreadyProcessed = false;
 
   try {
     await db.runTransaction(async (transaction) => {
@@ -78,8 +108,20 @@ export async function recordPaymentService(
       const folioRef = foliosSnap.docs[0].ref;
       const folioData = foliosSnap.docs[0].data();
 
-      const paymentId = crypto.randomUUID();
+      // Validación de saldo vigente para cobros automáticos
+      const actualBalance = (folioData.totalCharges || 0) - (folioData.totalPaid || 0);
+      if (typeof expectedBalance === 'number' && actualBalance !== expectedBalance) {
+        throw new PaymentError('El saldo del folio ha cambiado desde que se cargó la pantalla. Refresque los datos.', 409);
+      }
+
+      const paymentId = idempotencyKey || crypto.randomUUID();
       finalPaymentId = paymentId;
+
+      // Idempotency check: if this paymentId already exists, skip writes
+      if (folioData.payments && folioData.payments.some((p: any) => p.id === paymentId)) {
+        alreadyProcessed = true;
+        return;
+      }
 
       const updatedPayments = [
         ...(folioData.payments || []),
@@ -91,6 +133,7 @@ export async function recordPaymentService(
           reference: reference || null,
           currencyCode: currencyCode || 'BOB',
           receivedAmount: receivedAmount ?? amount,
+          allocations: finalAllocations.length > 0 ? finalAllocations : undefined,
           createdAt: Timestamp.now(),
         },
       ];
@@ -125,6 +168,10 @@ export async function recordPaymentService(
         });
       }
     });
+
+    if (alreadyProcessed) {
+      return { success: true as const, message: 'Pago ya registrado anteriormente.', paymentId: finalPaymentId };
+    }
 
     return { success: true as const, message: 'Pago registrado.', paymentId: finalPaymentId };
   } catch (error: any) {
