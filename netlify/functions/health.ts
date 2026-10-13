@@ -16,7 +16,7 @@ export const handler: Handler = async (event: HandlerEvent, context: HandlerCont
     body: JSON.stringify({
       ok: true,
       service: 'hostel-pms-api',
-      version: '1.19.1',
+      version: '1.20',
     }),
   };
 };
