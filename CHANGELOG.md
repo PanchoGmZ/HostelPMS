@@ -1,6 +1,31 @@
 # Changelog — Pata y Perro PMS
 
+## v1.20
+Fecha: 2026-10-13
+
+### Fase 2 — Prevención de Reservas Duplicadas y Cambio de Cama
+- **Idempotencia de Creación**: Clave `idempotencyKey` (UUID por sesión) que impide la creación de reservas duplicadas ante doble clic o reintentos de red.
+- **Guardia de Doble Envío (Frontend)**: `isSubmittingRef` en `WalkInModal` y `NewReservationModal` bloquea el segundo envío simultáneo antes de contactar el backend.
+- **Cambio de Cama con Fecha Editable**: La operación de cambio de cama pasa la fecha actual por defecto y permite retroactividad con validación de disponibilidad.
+- **Historial de Disponibilidad**: La disponibilidad de camas/habitaciones refleja cambios en tiempo real para evitar conflictos de asignación.
+
+### Fase 3 — Tarifas Flexibles y Formularios Numéricos
+- **Tarifas Normales Editables**: El administrador puede modificar la tarifa base de habitaciones y camas (`basePriceRoom`, `basePriceBed`, `priceByGuestCount`) sin afectar reservas ni folios históricos.
+- **Precio Negociado por Operación**: En Walk-in, Nueva Reserva, Extensión y Modificación, el recepcionista puede establecer un precio por noche o total diferente a la tarifa catálogo. El PMS lo registra como `pricingMode: 'manual'` con traza auditada.
+- **Distribución Exacta de Centavos**: El total pactado (`manualTotalAmount`) se distribuye entre noches por división entera de centavos (`floor + remainder`), garantizando que la suma sea exactamente el total acordado (sin errores de coma flotante).
+- **Tarifas Privadas por Huéspedes**: Habitaciones privadas usan `priceByGuestCount` para escalonar el precio según la ocupación.
+- **Inputs Numéricos sin Ceros Iniciales**: Nuevo componente `NumericInput` que elimina `0250 → 250`, permite el campo vacío durante edición y normaliza al desenfocar.
+- **Precios Históricos Congelados**: Las reservas, folios y cierres de caja anteriores quedan inmutables al cambiar tarifas generales.
+
+### Fase 4 — Modales Arrastrables
+- **Hook `useDraggableModal`**: Implementación de arrastre por referencia DOM sin dependencias externas. Activo en desktop (hover+pointer:fine), desactivado en móviles/touch.
+- **Arrastre desde el Encabezado**: Todos los modales principales permiten reposicionamiento arrastrando el `modal-header`. Los botones e inputs internos no interfieren con el arrastre.
+- **Clamping de Viewport**: El modal no puede arrastrase más allá de los límites de la pantalla (margen mínimo de 8 px en todos los lados).
+- **Scroll Interno Preservado**: El formulario mantiene `overflow-y: auto` y el `max-height` se recalcula al arrastrar.
+- **Modales Cubiertos**: WalkInModal, CheckInModal, NewReservationModal, ModifyReservationModal, ExtendStayModal, PaymentModal, CheckoutModal, ChangeRoomModal.
+
 ## v1.19.1
+
 Fecha: 2026-10-12
 
 - **Corrección Transaccional en Check-in y Walk-in (`checkInGuest`)**: Reorganización estricta de la transacción Firestore en dos fases (lecturas completas previas antes de cualquier escritura), resolviendo el error fatal `Firestore transactions require all reads to be executed before all writes`.

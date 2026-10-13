@@ -4,6 +4,8 @@ import { modifyReservation } from '../../services/reservations/reservationsServi
 import type { Reservation } from '../../types/reservations'
 import type { Guest } from '../../types/guests'
 import type { Room } from '../../types/rooms'
+import { NumericInput } from '../common/NumericInput'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface ModifyReservationModalProps {
   establishmentId: string
@@ -99,8 +101,8 @@ export function ModifyReservationModal({
     : guests
 
   const effectiveReason = specialRateReason === 'Otro'
-    ? (specialRateNote.trim() || 'Otro')
-    : specialRateReason
+    ? (specialRateNote.trim() || 'Tarifa negociada')
+    : (specialRateReason || 'Tarifa negociada')
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -121,10 +123,6 @@ export function ModifyReservationModal({
     if (pricingMode === 'manual') {
       if (typeof manualTotalAmount !== 'number' || manualTotalAmount < 0 || !isFinite(manualTotalAmount)) {
         setFormError('El precio total acordado debe ser un número mayor o igual a 0.')
-        return
-      }
-      if (!effectiveReason.trim()) {
-        setFormError('Ingresa un motivo para la tarifa especial.')
         return
       }
     }
@@ -177,6 +175,8 @@ export function ModifyReservationModal({
     }
   }
 
+  const { modalRef, headerProps } = useDraggableModal()
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
@@ -184,9 +184,10 @@ export function ModifyReservationModal({
         style={{ maxWidth: '540px', maxHeight: '90vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
         {/* Header */}
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker">Reserva #{reservation.id.slice(-6).toUpperCase()}</span>
             <h2>Modificar Reserva</h2>
@@ -442,15 +443,11 @@ export function ModifyReservationModal({
               <label style={{ fontWeight: 600, marginBottom: '6px', display: 'block' }}>
                 Comisión (%)
               </label>
-              <input
-                type="number"
+              <NumericInput
                 min={0}
                 max={100}
-                step={0.5}
-                value={commissionPercent}
-                onChange={(e) =>
-                  setCommissionPercent(e.target.value === '' ? '' : Number(e.target.value))
-                }
+                value={commissionPercent === '' ? 0 : commissionPercent}
+                onChange={(val) => setCommissionPercent(val)}
                 placeholder="Ej. 15"
               />
             </div>
@@ -523,12 +520,10 @@ export function ModifyReservationModal({
                   Precio acordado (Total)
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <input
-                    type="number"
+                  <NumericInput
                     min={0}
-                    step={0.5}
                     value={manualTotalAmount}
-                    onChange={(e) => setManualTotalAmount(Number(e.target.value))}
+                    onChange={setManualTotalAmount}
                     placeholder="0"
                     style={{ borderColor: 'var(--coral)', width: '120px' }}
                   />

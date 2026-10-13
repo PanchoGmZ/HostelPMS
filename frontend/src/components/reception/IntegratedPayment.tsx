@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { CURRENCIES } from '../../utils/currencies'
 import type { PaymentAllocation } from '../../types/folios'
+import { NumericInput } from '../common/NumericInput'
 
 export type PaymentIntent = 'full' | 'partial' | 'none'
 
@@ -51,10 +52,6 @@ export function IntegratedPayment({
   const [receivedAmount, setReceivedAmount] = useState<number>(pendingBalance)
   const [amountApplied, setAmountApplied] = useState<number>(pendingBalance)
   const [reference, setReference] = useState<string>('')
-  
-  // Keep strings for input fields so they don't jump to '0' on empty
-  const [amountStr, setAmountStr] = useState<string>(String(pendingBalance))
-  const [receivedStr, setReceivedStr] = useState<string>(String(pendingBalance))
 
   const [allocLodging, setAllocLodging] = useState<number>(0)
   const [allocConsumption, setAllocConsumption] = useState<number>(0)
@@ -124,10 +121,8 @@ export function IntegratedPayment({
   useEffect(() => {
     if (intent === 'full') {
       setAmountApplied(pendingBalance)
-      setAmountStr(String(pendingBalance))
       if (currencyCode === 'BOB') {
         setReceivedAmount(pendingBalance)
-        setReceivedStr(String(pendingBalance))
       }
     }
   }, [pendingBalance, intent]) // intentionally omitting currencyCode to not overwrite user edits in other modes
@@ -136,7 +131,6 @@ export function IntegratedPayment({
   useEffect(() => {
     if (currencyCode === 'BOB') {
       setAmountApplied(receivedAmount)
-      setAmountStr(String(receivedAmount))
     }
   }, [receivedAmount, currencyCode])
 
@@ -146,14 +140,6 @@ export function IntegratedPayment({
       setIntent(defaultIntent)
     }
   }, [pendingBalance, defaultIntent, allowNoneOption, intent])
-
-  const handleNumberBlur = (val: string, setterNum: (n: number) => void, setterStr: (s: string) => void) => {
-    let parsed = parseFloat(val)
-    if (isNaN(parsed) || parsed < 0) parsed = 0
-    const norm = parsed.toString()
-    setterNum(parsed)
-    setterStr(norm)
-  }
 
   if (pendingBalance <= 0) {
     return (
@@ -187,17 +173,13 @@ export function IntegratedPayment({
               <input type="radio" name="payIntent" checked={intent === 'full'} onChange={() => {
                 setIntent('full')
                 setReceivedAmount(pendingBalance)
-                setReceivedStr(String(pendingBalance))
                 setAmountApplied(pendingBalance)
-                setAmountStr(String(pendingBalance))
               }} />
               Cobrar todo
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
               <input type="radio" name="payIntent" checked={intent === 'partial'} onChange={() => {
                 setIntent('partial')
-                setReceivedStr('')
-                setAmountStr('')
                 setReceivedAmount(0)
                 setAmountApplied(0)
               }} />
@@ -250,17 +232,10 @@ export function IntegratedPayment({
               <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
                 Monto recibido ({currencyCode}) *
               </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={receivedStr}
-                onChange={(e) => {
-                  setReceivedStr(e.target.value)
-                  const v = parseFloat(e.target.value)
-                  if (!isNaN(v)) setReceivedAmount(v)
-                }}
-                onBlur={(e) => handleNumberBlur(e.target.value, setReceivedAmount, setReceivedStr)}
+              <NumericInput
+                min={0.01}
+                value={receivedAmount}
+                onChange={setReceivedAmount}
                 disabled={!isShiftOpen}
                 required
               />
@@ -271,17 +246,10 @@ export function IntegratedPayment({
                 <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
                   Monto aplicado al folio (BOB) *
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={amountStr}
-                  onChange={(e) => {
-                    setAmountStr(e.target.value)
-                    const v = parseFloat(e.target.value)
-                    if (!isNaN(v)) setAmountApplied(v)
-                  }}
-                  onBlur={(e) => handleNumberBlur(e.target.value, setAmountApplied, setAmountStr)}
+                <NumericInput
+                  min={0.01}
+                  value={amountApplied}
+                  onChange={setAmountApplied}
                   disabled={!isShiftOpen}
                   required
                 />
@@ -311,19 +279,19 @@ export function IntegratedPayment({
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                 <div>
                   <label style={{ fontSize: '11px', display: 'block', color: 'var(--slate-500)' }}>Hospedaje</label>
-                  <input type="number" step="0.01" min="0" value={allocLodging} onChange={e => setAllocLodging(parseFloat(e.target.value)||0)} disabled={!isShiftOpen} />
+                  <NumericInput min={0} value={allocLodging} onChange={setAllocLodging} disabled={!isShiftOpen} />
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', display: 'block', color: 'var(--slate-500)' }}>Consumos</label>
-                  <input type="number" step="0.01" min="0" value={allocConsumption} onChange={e => setAllocConsumption(parseFloat(e.target.value)||0)} disabled={!isShiftOpen} />
+                  <NumericInput min={0} value={allocConsumption} onChange={setAllocConsumption} disabled={!isShiftOpen} />
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', display: 'block', color: 'var(--slate-500)' }}>Otros</label>
-                  <input type="number" step="0.01" min="0" value={allocOther} onChange={e => setAllocOther(parseFloat(e.target.value)||0)} disabled={!isShiftOpen} />
+                  <NumericInput min={0} value={allocOther} onChange={setAllocOther} disabled={!isShiftOpen} />
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', display: 'block', color: 'var(--slate-500)' }}>Sin Asignar</label>
-                  <input type="number" step="0.01" min="0" value={allocUnassigned} onChange={e => setAllocUnassigned(parseFloat(e.target.value)||0)} disabled={!isShiftOpen} />
+                  <NumericInput min={0} value={allocUnassigned} onChange={setAllocUnassigned} disabled={!isShiftOpen} />
                 </div>
               </div>
             </div>

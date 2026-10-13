@@ -6,6 +6,7 @@ import type { CashShift } from '../../types/cash'
 import type { Folio, PaymentAllocation } from '../../types/folios'
 import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
 import { calculateNightlyStatus } from '../../utils/folioCalculations'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface PaymentModalProps {
   establishmentId: string
@@ -90,6 +91,8 @@ export function PaymentModal({
     }
   }
 
+  const { modalRef, headerProps } = useDraggableModal()
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
@@ -97,8 +100,9 @@ export function PaymentModal({
         style={{ maxWidth: '440px' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker">Caja y Cobros</span>
             <h2>Registrar Pago</h2>

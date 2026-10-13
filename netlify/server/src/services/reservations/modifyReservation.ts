@@ -48,9 +48,9 @@ export async function modifyReservationService(
     pricingMode,
     manualPricePerNight,
     manualTotalAmount,
-    specialRateReason,
     bookingContact,
   } = payload;
+  let specialRateReason = payload.specialRateReason;
 
   if (!establishmentId || !reservationId) {
     throw new ReservationError('Parámetros requeridos faltantes.', 400);
@@ -76,7 +76,7 @@ export async function modifyReservationService(
       throw new ReservationError('Precio manual requerido.', 400);
     }
     if (specialRateReason !== undefined && (!specialRateReason || typeof specialRateReason !== 'string' || specialRateReason.trim() === '')) {
-      throw new ReservationError('Se requiere un motivo para la tarifa especial.', 400);
+      specialRateReason = 'Tarifa negociada';
     }
   }
 
@@ -225,7 +225,11 @@ export async function modifyReservationService(
         // En full_room solo la primera cama lleva precio, las demás son 0
         // En bed: cada cama lleva precio
         const pricingBedCount = saleMode === 'full_room' ? 1 : bedIds.length;
-        newTotalAmount = nightlyPrice * nights * pricingBedCount;
+        if (manualTotalAmount !== undefined) {
+          newTotalAmount = Math.round(manualTotalAmount * (1 + commissionRate) * 100) / 100;
+        } else {
+          newTotalAmount = Math.round(nightlyPrice * nights * pricingBedCount * 100) / 100;
+        }
 
         updates.totalAmount = newTotalAmount;
         updates.guestCount = resolvedGuestCount;
@@ -249,7 +253,7 @@ export async function modifyReservationService(
         }
         
         updates.specialRateReason = finalPricingMode === 'manual'
-          ? (specialRateReason?.trim() ?? reservation.specialRateReason ?? null)
+          ? (specialRateReason?.trim() || reservation.specialRateReason || 'Tarifa negociada')
           : null;
       } else {
         // Sin recalculo — actualizar pricingMode/reason si vienen

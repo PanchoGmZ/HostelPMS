@@ -1,8 +1,9 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useRef, type FormEvent } from 'react'
 import { X, AlertTriangle, Loader2, BedDouble, ArrowRight, Info } from 'lucide-react'
 import { changeBedInStay } from '../../services/stays/staysService'
 import type { Stay } from '../../types/stays'
 import type { Room, Bed } from '../../types/rooms'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface ChangeRoomModalProps {
   establishmentId: string
@@ -46,8 +47,22 @@ export function ChangeRoomModal({
   const saleMode = stay.saleMode ?? (stay.bedIds.length > 1 ? 'full_room' : 'bed')
   const isFullRoom = saleMode === 'full_room'
 
-  // Fecha efectiva del cambio (default HOY)
-  const [effectiveDate, setEffectiveDate] = useState(todayStr)
+  // Si la estancia ya terminó o vence hoy, debe extenderse primero
+  const isStayExpired = todayStr >= checkOutStr
+
+  // Fecha efectiva predeterminada: HOY en America/La_Paz dentro del rango de la estadía
+  const defaultEffectiveDate = useMemo(() => {
+    if (todayStr >= checkInStr && todayStr < checkOutStr) {
+      return todayStr
+    }
+    if (todayStr < checkInStr) {
+      return checkInStr
+    }
+    return checkInStr
+  }, [todayStr, checkInStr, checkOutStr])
+
+  const [effectiveDate, setEffectiveDate] = useState(defaultEffectiveDate)
+  const isSubmittingRef = useRef(false)
 
   // Selección destino
   const [toRoomId, setToRoomId] = useState<string>('')
@@ -111,6 +126,13 @@ export function ChangeRoomModal({
     e.preventDefault()
     setFormError(null)
 
+    if (isSubmittingRef.current || submitting) return
+
+    if (isStayExpired) {
+      setFormError(`Esta estadía ya cumplió o superó su fecha de salida prevista (${formatDate(stay.expectedCheckOutDate)}). Para cambiar de habitación o cama, primero debes extender la estadía.`)
+      return
+    }
+
     if (!toRoomId) {
       setFormError('Selecciona la habitación destino.')
       return
@@ -132,6 +154,7 @@ export function ChangeRoomModal({
       return
     }
 
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       await changeBedInStay({
@@ -150,8 +173,11 @@ export function ChangeRoomModal({
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
+
+  const { modalRef, headerProps } = useDraggableModal()
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -160,8 +186,9 @@ export function ChangeRoomModal({
         style={{ maxWidth: '500px' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker" style={{ color: 'var(--accent, #6366f1)' }}>Sin Check-out</span>
             <h2>Cambiar Habitación / Cama</h2>
@@ -173,6 +200,18 @@ export function ChangeRoomModal({
           <div className="form-error">
             <AlertTriangle size={16} />
             <span>{formError}</span>
+          </div>
+        )}
+
+        {isStayExpired && (
+          <div className="stay-notice critical" style={{ marginBottom: '16px', display: 'flex', gap: '10px' }}>
+            <AlertTriangle size={18} style={{ flexShrink: 0, color: 'var(--danger, #ef4444)' }} />
+            <div>
+              <strong style={{ color: 'var(--danger, #ef4444)' }}>Estadía sin noches pendientes (salida: {formatDate(stay.expectedCheckOutDate)})</strong>
+              <p style={{ margin: '4px 0 0', fontSize: '13px' }}>
+                La estadía cumplió o supera su fecha de salida prevista. No tiene noches futuras por transferir. Si el huésped continuará alojado, primero debes extender su estadía.
+              </p>
+            </div>
           </div>
         )}
 
@@ -208,6 +247,7 @@ export function ChangeRoomModal({
               return toLocalDateString(d)
             })()}
             onChange={(e) => setEffectiveDate(e.target.value)}
+            disabled={isStayExpired}
             required
           />
           {effectiveDate < todayStr && (
@@ -320,10 +360,10 @@ export function ChangeRoomModal({
           <button
             type="submit"
             className="primary-button"
-            disabled={submitting || !toRoomId || toBedIds.length === 0 || isSameLocation || isModeMismatch}
+            disabled={submitting || isStayExpired || !toRoomId || toBedIds.length === 0 || isSameLocation || isModeMismatch}
           >
             {submitting ? (
-              <><Loader2 size={16} className="loader" /> Cambiando...</>
+              <><Loader2 size={16} className="loader" /> Procesando...</>
             ) : (
               <><BedDouble size={15} /> Confirmar Cambio</>
             )}

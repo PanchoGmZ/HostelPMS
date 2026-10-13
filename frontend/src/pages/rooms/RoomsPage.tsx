@@ -33,6 +33,7 @@ import type { Bed, Room, RoomType } from '../../types/rooms'
 import { BedVisualUnit } from '../../components/beds/BedVisualUnit'
 import { BedLegend } from '../../components/beds/BedLegend'
 import { BedActionModal } from '../../components/beds/BedActionModal'
+import { NumericInput } from '../../components/common/NumericInput'
 import '../../components/beds/BedVisualUnit.css'
 import './RoomsPage.css'
 
@@ -1085,17 +1086,16 @@ function RoomModal({
           </label>
           <label>
             Precio base habitación (BOB)
-            <input
-              type="number"
-              min="0"
-              value={draft.basePriceRoom === 0 ? '' : draft.basePriceRoom}
+            <NumericInput
+              min={0}
+              value={draft.basePriceRoom}
               placeholder="0"
-              onChange={(event) =>
+              onChange={(val) =>
                 onChange({
                   ...editor,
                   draft: {
                     ...draft,
-                    basePriceRoom: event.target.value === '' ? 0 : Number(event.target.value),
+                    basePriceRoom: val,
                   },
                 })
               }
@@ -1123,12 +1123,12 @@ function RoomModal({
             <h4 style={{ margin: '0 0 12px 0', fontSize: 13, color: 'var(--text)' }}>Configuración de Privada (Ocupantes)</h4>
             <label style={{ marginBottom: 0 }}>
               Capacidad máxima (Huéspedes)
-              <input
-                type="number"
-                min="1"
+              <NumericInput
+                min={1}
+                allowDecimals={false}
                 value={draft.maxGuests ?? 1}
-                onChange={(e) => {
-                  const maxGuests = Math.max(1, Number(e.target.value))
+                onChange={(val) => {
+                  const maxGuests = Math.max(1, Math.round(val))
                   onChange({ ...editor, draft: { ...draft, maxGuests } })
                 }}
               />
@@ -1141,18 +1141,16 @@ function RoomModal({
                 return (
                   <div key={count} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                     <span style={{ minWidth: 100, fontSize: 13, color: 'var(--muted)' }}>{count} {i === 0 ? 'huésped' : 'huéspedes'}:</span>
-                    <input
-                      type="number"
-                      min="0"
+                    <NumericInput
+                      min={0}
                       placeholder={String(draft.basePriceRoom || 0)}
-                      value={draft.priceByGuestCount?.[count] ?? ''}
-                      onChange={(e) => {
-                        const val = e.target.value
+                      value={draft.priceByGuestCount?.[count] ?? 0}
+                      onChange={(val) => {
                         const newPrices = { ...(draft.priceByGuestCount || {}) }
-                        if (val === '') {
+                        if (val === 0) {
                           delete newPrices[count]
                         } else {
-                          newPrices[count] = Number(val)
+                          newPrices[count] = val
                         }
                         onChange({ ...editor, draft: { ...draft, priceByGuestCount: newPrices } })
                       }}
@@ -1216,16 +1214,15 @@ function RoomModal({
                     <option value="Unipersonal">Unipersonal</option>
                     <option value="Matrimonial">Matrimonial</option>
                   </select>
-                  <input
-                    type="number"
-                    min="0"
+                  <NumericInput
+                    min={0}
                     placeholder="Precio base cama (BOB)"
-                    value={bed.basePriceBed === 0 ? '' : bed.basePriceBed}
-                    onChange={(event) => {
+                    value={bed.basePriceBed}
+                    onChange={(val) => {
                       const newBeds = [...editor.newBeds]
                       newBeds[index] = {
                         ...bed,
-                        basePriceBed: event.target.value === '' ? 0 : Number(event.target.value),
+                        basePriceBed: val,
                       }
                       onChange({ ...editor, newBeds })
                     }}
@@ -1282,6 +1279,8 @@ function BedModal({
   onClose: () => void
   onSubmit: (event: FormEvent<HTMLFormElement>) => void
 }) {
+  const [bedPrice, setBedPrice] = useState(editor.bed?.basePriceBed ?? 0)
+
   return (
     <div className="modal-backdrop">
       <form className="modal-form" onSubmit={onSubmit}>
@@ -1300,7 +1299,13 @@ function BedModal({
         </label>
         <label>
           Precio por noche (BOB)
-          <input name="price" type="number" min="0" defaultValue={editor.bed?.basePriceBed ?? 0} />
+          <NumericInput
+            name="price"
+            min={0}
+            value={bedPrice}
+            onChange={setBedPrice}
+            placeholder="0"
+          />
         </label>
         <div className="modal-actions">
           <button className="secondary-button" type="button" onClick={onClose}>

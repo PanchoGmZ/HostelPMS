@@ -1,4 +1,4 @@
-import { useState, useMemo, type FormEvent } from 'react'
+import { useState, useMemo, useRef, type FormEvent } from 'react'
 import { X, Loader2, AlertTriangle } from 'lucide-react'
 import { createReservation } from '../../services/reservations/reservationsService'
 import type { Bed, Room } from '../../types/rooms'
@@ -8,6 +8,8 @@ import { saveGuest, searchGuests } from '../../services/guests/guestsService'
 import { MultiGuestSection, createEmptySlot, createExistingSlot } from '../guests/MultiGuestSection'
 import type { GuestSlot } from '../guests/MultiGuestSection'
 import { validateDraft, cleanDraft } from '../guests/GuestInlineForm'
+import { NumericInput } from '../common/NumericInput'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface NewReservationModalProps {
   establishmentId: string
@@ -46,6 +48,9 @@ export function NewReservationModal({
   const todayStr = toLocalDateString(new Date())
   const tomorrowStr = getTomorrowString(todayStr)
 
+  const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
+  const isSubmittingRef = useRef<boolean>(false)
+
   const [localGuests, setLocalGuests] = useState<Guest[]>(guests)
   const [guestMode, setGuestMode] = useState<'quick' | 'registered' | 'new'>('quick')
   const [showNewGuestModal, setShowNewGuestModal] = useState(false)
@@ -71,8 +76,8 @@ export function NewReservationModal({
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  const [useAgreedPrice, setUseAgreedPrice] = useState(false)
-  const [agreedTotal, setAgreedTotal] = useState<number>(0)
+  const [customPricePerNight, setCustomPricePerNight] = useState<number | null>(null)
+  const [customTotal, setCustomTotal] = useState<number | null>(null)
 
   const selectedRoom = useMemo(() => rooms.find((r) => r.id === roomId), [rooms, roomId])
   const isPrivate = selectedRoom?.type === 'private'
@@ -103,11 +108,25 @@ export function NewReservationModal({
 
   const effectiveBedId = bedId || availableBeds[0]?.id || ''
   const selectedBed = availableBeds.find((b) => b.id === effectiveBedId)
-  const pricePerNightNumber = selectedBed?.basePriceBed ?? selectedRoom?.basePriceRoom ?? 50
-  const estimatedTotal = nights * pricePerNightNumber
 
   // v1.15: El guestCount efectivo para el modo registrado
   const effectiveGuestCount = guestMode === 'quick' ? quickGuestCount : registeredGuestCount
+
+  const suggestedPricePerNight = useMemo(() => {
+    if (isPrivate) {
+      const countStr = String(effectiveGuestCount)
+      return selectedRoom?.priceByGuestCount?.[countStr] ?? selectedRoom?.basePriceRoom ?? 50
+    }
+    return selectedBed?.basePriceBed ?? selectedRoom?.basePriceRoom ?? 50
+  }, [isPrivate, effectiveGuestCount, selectedRoom, selectedBed])
+
+  const suggestedTotal = nights * suggestedPricePerNight
+
+  const isPriceModified = (customPricePerNight !== null && customPricePerNight !== suggestedPricePerNight) ||
+                          (customTotal !== null && customTotal !== suggestedTotal)
+
+  const effectivePricePerNight = customPricePerNight !== null ? customPricePerNight : suggestedPricePerNight
+  const effectiveTotal = customTotal !== null ? customTotal : (nights * effectivePricePerNight)
 
   // v1.15: Sincronizar slots cuando cambia registeredGuestCount
   const handleRegisteredGuestCountChange = (count: number) => {
@@ -155,6 +174,10 @@ export function NewReservationModal({
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setFormError(null)
+
+    if (isSubmittingRef.current || submitting) return
+    isSubmittingRef.current = true
+    setSubmitting(true)
 
     if (guestMode === 'quick') {
       if (!quickName.trim()) {
@@ -220,7 +243,7 @@ export function NewReservationModal({
 
     const pricePerNight: Record<string, Record<string, number>> = {}
     for (const bId of effectiveBedIds) {
-      pricePerNight[bId] = Object.fromEntries(dates.map((d) => [d, pricePerNightNumber]))
+      pricePerNight[bId] = Object.fromEntries(dates.map((d) => [d, isPrivate ? (bId === effectiveBedIds[0] ? effectivePricePerNight : 0) : effectivePricePerNight]))
     }
 
     setSubmitting(true)
@@ -260,6 +283,7 @@ export function NewReservationModal({
 
       const payload: Parameters<typeof createReservation>[0] = {
         establishmentId,
+        idempotencyKey: idempotencyKeyRef.current,
         roomId,
         bedIds: effectiveBedIds,
         saleMode,
@@ -282,10 +306,11 @@ export function NewReservationModal({
             }),
       }
 
-      if (useAgreedPrice) {
+      if (isPriceModified) {
         payload.pricingMode = 'manual'
-        payload.manualTotalAmount = agreedTotal
-        payload.specialRateReason = 'Precio negociado / acordado en recepción'
+        payload.manualTotalAmount = effectiveTotal
+        payload.manualPricePerNight = effectivePricePerNight
+        payload.specialRateReason = 'Precio negociado en recepción'
       }
 
       await createReservation(payload)
@@ -302,8 +327,11 @@ export function NewReservationModal({
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
+
+  const { modalRef, headerProps } = useDraggableModal()
 
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
@@ -312,8 +340,9 @@ export function NewReservationModal({
         style={{ maxWidth: '560px', maxHeight: '92vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker">Reservas</span>
             <h2>Nueva Reserva</h2>
@@ -394,12 +423,12 @@ export function NewReservationModal({
                   <label style={{ fontSize: '12px', marginBottom: '4px' }}>
                     Cantidad de personas <span style={{ color: 'var(--coral)' }}>*</span>
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="99"
+                  <NumericInput
+                    min={1}
+                    max={99}
+                    allowDecimals={false}
                     value={quickGuestCount}
-                    onChange={(e) => setQuickGuestCount(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={(v) => setQuickGuestCount(Math.max(1, Math.round(v)))}
                     required
                   />
                 </div>
@@ -542,7 +571,7 @@ export function NewReservationModal({
           </div>
         </div>
 
-        {/* Channel & Total */}
+        {/* Channel & Rates */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
           <div>
             <label>Canal</label>
@@ -555,43 +584,82 @@ export function NewReservationModal({
             </select>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Precio referencial ({nights} noches):</span>
-            <strong style={{ fontSize: '18px', color: 'var(--teal)', textDecoration: useAgreedPrice ? 'line-through' : 'none', opacity: useAgreedPrice ? 0.6 : 1 }}>{estimatedTotal} BOB</strong>
+            <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Tarifa sugerida ({nights} noche{nights === 1 ? '' : 's'}):</span>
+            <span style={{ fontSize: '13px', color: 'var(--text)' }}>
+              <strong>{suggestedPricePerNight} BOB</strong>/noche · Total: <strong>{suggestedTotal} BOB</strong>
+            </span>
           </div>
         </div>
 
-        {/* Agreed price */}
-        <div style={{ marginBottom: '16px', background: '#fff7ed', padding: '12px', borderRadius: '8px', border: '1px solid #fed7aa' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontWeight: 600, color: 'var(--ink)' }}>
-            <input
-              type="checkbox"
-              checked={useAgreedPrice}
-              onChange={(e) => {
-                setUseAgreedPrice(e.target.checked)
-                if (e.target.checked && agreedTotal === 0) setAgreedTotal(estimatedTotal)
-              }}
-            />
-            Ajustar precio
-          </label>
-          {useAgreedPrice && (
-            <div style={{ marginTop: '10px' }}>
-              <label style={{ margin: 0, fontSize: '12px' }}>
-                Precio acordado (Total {nights} noches)
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={agreedTotal}
-                    onChange={(e) => setAgreedTotal(Number(e.target.value))}
-                    required
-                    style={{ width: '120px' }}
-                  />
-                  <strong>BOB</strong>
-                </div>
+        {/* Negotiated Pricing Section */}
+        <div style={{
+          marginBottom: '16px',
+          background: isPriceModified ? '#fff8f5' : '#f8fafc',
+          padding: '12px',
+          borderRadius: '8px',
+          border: `1px solid ${isPriceModified ? 'var(--coral, #f97316)' : 'var(--line, #e2e8f0)'}`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={{ fontWeight: 600, fontSize: '13px', color: isPriceModified ? 'var(--coral, #c2410c)' : 'var(--ink)' }}>
+              {isPriceModified ? 'Precio pactado / negociado' : 'Precio de la reserva'}
+            </span>
+            {isPriceModified && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomPricePerNight(null)
+                  setCustomTotal(null)
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--coral)',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                Restablecer tarifa estándar
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                Precio por noche (BOB)
               </label>
+              <NumericInput
+                min={0}
+                value={effectivePricePerNight}
+                onChange={(val) => {
+                  setCustomPricePerNight(val)
+                  setCustomTotal(Math.round(val * nights * 100) / 100)
+                }}
+                placeholder={String(suggestedPricePerNight)}
+              />
             </div>
-          )}
+            <div>
+              <label style={{ fontSize: '12px', display: 'block', marginBottom: '4px' }}>
+                Total pactado ({nights} noches)
+              </label>
+              <NumericInput
+                min={0}
+                value={effectiveTotal}
+                onChange={(val) => {
+                  setCustomTotal(val)
+                  setCustomPricePerNight(nights > 0 ? Math.round((val / nights) * 100) / 100 : val)
+                }}
+                placeholder={String(suggestedTotal)}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: '8px', fontSize: '12px', color: isPriceModified ? 'var(--coral)' : 'var(--muted)' }}>
+            Resumen: {nights} noche{nights === 1 ? '' : 's'} × {effectivePricePerNight} BOB = <strong>{effectiveTotal} BOB</strong>
+            {isPriceModified && ' (Tarifa negociada)'}
+          </div>
         </div>
 
         <div className="modal-actions">
@@ -601,7 +669,7 @@ export function NewReservationModal({
           <button type="submit" className="primary-button" disabled={submitting}>
             {submitting ? (
               <>
-                <Loader2 size={16} className="loader" /> Guardando...
+                <Loader2 size={16} className="loader" /> Procesando...
               </>
             ) : (
               'Confirmar Reserva'

@@ -7,6 +7,8 @@ import type { Folio } from '../../types/folios'
 import type { CashShift } from '../../types/cash'
 import type { Room } from '../../types/rooms'
 import { CURRENCIES } from '../../utils/currencies'
+import { NumericInput } from '../common/NumericInput'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface ExtendStayModalProps {
   establishmentId: string
@@ -154,6 +156,8 @@ export function ExtendStayModal({
     }
   }
 
+  const { modalRef, headerProps } = useDraggableModal()
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
@@ -161,8 +165,9 @@ export function ExtendStayModal({
         style={{ maxWidth: '460px' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker" style={{ color: 'var(--teal, #0d9488)' }}>Estadía Activa</span>
             <h2>Extender Estadía</h2>
@@ -234,14 +239,14 @@ export function ExtendStayModal({
             </div>
           )}
           {(priceMode === 'manual' || originalPricePerNight === null) && (
-            <input
-              type="number"
-              min="0"
-              step="0.5"
-              value={manualPrice}
-              onChange={(e) => setManualPrice(Number(e.target.value))}
-              placeholder="Ej: 120"
-            />
+            <div style={{ marginTop: '6px' }}>
+              <NumericInput
+                min={0}
+                value={manualPrice}
+                onChange={setManualPrice}
+                placeholder="Ej: 120"
+              />
+            </div>
           )}
         </div>
 
@@ -318,12 +323,10 @@ export function ExtendStayModal({
                 </div>
                 <div>
                   <label style={{ fontSize: '12px' }}>Monto recibido *</label>
-                  <input
-                    type="number"
-                    min="0.01"
-                    step="0.01"
+                  <NumericInput
+                    min={0.01}
                     value={payReceived}
-                    onChange={(e) => setPayReceived(Number(e.target.value))}
+                    onChange={setPayReceived}
                     disabled={!isShiftOpen}
                   />
                 </div>

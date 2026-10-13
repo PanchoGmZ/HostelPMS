@@ -84,7 +84,7 @@ export async function changeBedInStayService(
         throw new ReservationError(`La fecha efectiva (${effectiveDate}) no puede ser anterior al check-in (${checkInStr}).`, 400);
       }
       if (effectiveDate >= checkOutStr) {
-        throw new ReservationError(`La fecha efectiva (${effectiveDate}) debe ser anterior a la salida prevista (${checkOutStr}).`, 400);
+        throw new ReservationError(`La fecha efectiva (${effectiveDate}) debe ser anterior a la salida prevista (${checkOutStr}). Si la estadía ya finalizó o termina hoy, primero debes extender la estadía.`, 400);
       }
 
       const fromBedIds: string[] = stay.bedIds || [];

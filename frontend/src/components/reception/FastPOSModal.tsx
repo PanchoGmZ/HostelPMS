@@ -4,6 +4,7 @@ import { addChargeToFolio } from '../../services/folios/foliosService'
 import type { Stay } from '../../types/stays'
 import type { Folio } from '../../types/folios'
 import type { Product } from '../../types/inventory'
+import { NumericInput } from '../common/NumericInput'
 
 interface FastPOSModalProps {
   establishmentId: string
@@ -184,12 +185,10 @@ export function FastPOSModal({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '10px', marginBottom: '14px' }}>
           <div>
             <label>Precio Unit. (BOB)</label>
-            <input
-              type="number"
-              step="0.5"
-              min="0"
+            <NumericInput
+              min={0}
               value={unitPrice}
-              onChange={(e) => setCustomPrice(Number(e.target.value))}
+              onChange={(val) => setCustomPrice(val)}
             />
           </div>
           <div>

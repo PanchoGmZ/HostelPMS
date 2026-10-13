@@ -758,14 +758,27 @@ h1, h2, h3 { font-family: var(--font-display); letter-spacing: -0.02em; }
   background: var(--white);
   border-radius: 12px;
   box-shadow: 0 18px 50px rgba(28, 54, 47, 0.25);
+  /* When dragged to fixed position, auto self-clips to remain on screen */
+  z-index: 101;
 }
 
 .modal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 5px; }
 .modal-header h2 { margin-top: 7px; font-size: 24px; }
+/* Draggable header affordance — desktop only */
+@media (hover: hover) and (pointer: fine) {
+  .modal-header {
+    border-radius: 8px 8px 0 0;
+    transition: background 0.15s;
+  }
+  .modal-header:hover {
+    background: rgba(0, 0, 0, 0.03);
+  }
+}
 .modal-form label { display: grid; gap: 6px; color: var(--ink); font-size: 12px; font-weight: 600; }
 .modal-form textarea { min-height: 88px; resize: vertical; }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 9px; }
+
 
 .guest-toolbar {
   display: flex;

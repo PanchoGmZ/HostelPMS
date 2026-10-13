@@ -66,6 +66,7 @@ export interface CreateReservationPayload {
   manualPricePerNight?: number
   manualTotalAmount?: number
   specialRateReason?: string
+  idempotencyKey?: string
 }
 
 export interface CancelReservationPayload {

@@ -32,12 +32,14 @@ export interface CreateReservationPayload {
   manualPricePerNight?: number;
   manualTotalAmount?: number; // v1.9: total manual
   specialRateReason?: string;
+  idempotencyKey?: string;
 }
 
 export interface CreateReservationResult {
   success: true;
   reservationId: string;
   totalAmount: number;
+  alreadyProcessed?: boolean;
 }
 
 // ============================================================================
@@ -77,8 +79,9 @@ export async function createReservationService(
     pricingMode = 'standard',
     manualPricePerNight,
     manualTotalAmount,
-    specialRateReason,
+    idempotencyKey,
   } = payload;
+  let specialRateReason = payload.specialRateReason;
   const requestedCheckIn = payload.checkIn ?? payload.checkInDate;
   const requestedCheckOut = payload.checkOut ?? payload.checkOutDate;
   const callerUid = auth.uid;
@@ -131,7 +134,7 @@ export async function createReservationService(
       throw new ReservationError('Precio manual requerido.');
     }
     if (!specialRateReason || typeof specialRateReason !== 'string' || specialRateReason.trim() === '') {
-      throw new ReservationError('Se requiere un motivo para la tarifa especial.');
+      specialRateReason = 'Tarifa negociada';
     }
   }
 
@@ -211,6 +214,18 @@ export async function createReservationService(
   const estRef = db.collection('establishments').doc(establishmentId);
   const reservationRef = estRef.collection('reservations').doc();
 
+  // v1.20: Idempotencia en creación de reservas para prevenir duplicados
+  const cleanIdempotencyKey =
+    typeof idempotencyKey === 'string' && idempotencyKey.trim().length > 0
+      ? idempotencyKey.trim()
+      : null;
+  const idempotencyRef = cleanIdempotencyKey
+    ? estRef.collection('idempotency').doc(cleanIdempotencyKey)
+    : null;
+
+  let alreadyProcessed = false;
+  let finalReservationId = reservationRef.id;
+
   // Un solo ID de línea por cama, generado antes de la transacción
   const lineRefByBed: { [bedId: string]: FirebaseFirestore.DocumentReference } = {};
   for (const bedId of bedIds) {
@@ -222,6 +237,18 @@ export async function createReservationService(
 
   try {
     await db.runTransaction(async (transaction) => {
+      // -1. Verificación de Idempotencia en Phase 1 (Reads)
+      if (idempotencyRef) {
+        const idempSnap = await transaction.get(idempotencyRef);
+        if (idempSnap.exists) {
+          const idempData = idempSnap.data() || {};
+          alreadyProcessed = true;
+          finalReservationId = idempData.reservationId || reservationRef.id;
+          finalTotalAmount = idempData.totalAmount ?? 0;
+          return;
+        }
+      }
+
       // 0. Validar la pertenencia y el estado de la habitación y sus camas.
       const estSnap = await transaction.get(estRef);
       if (!estSnap.exists) throw new Error('El establecimiento no existe.');
@@ -283,48 +310,72 @@ export async function createReservationService(
         }
       }
 
-      for (const bedId of bedIds) {
-        finalPricePerNight[bedId] = {};
-        const bedSnap = bedSnaps.find(snap => snap.id === bedId);
-        const bed = bedSnap?.data() || {};
-        const dates = perBedDates[bedId];
-        
-        let basePrice = 0;
+      if (pricingMode === 'manual' && typeof manualTotalAmount === 'number') {
+        const roundedManualTotal = Math.round(manualTotalAmount * (1 + commissionRate) * 100) / 100;
+        finalTotalAmount = roundedManualTotal;
+        const totalCents = Math.round(roundedManualTotal * 100);
 
-        if (pricingMode === 'manual') {
-          // v1.9: usar manualTotalAmount si está presente
-          let effManualPricePerNight = manualPricePerNight as number;
-          if (typeof manualTotalAmount === 'number') {
-             const totalChargeableUnits = saleMode === 'full_room' ? expectedDates.length : (expectedDates.length * bedIds.length);
-             effManualPricePerNight = totalChargeableUnits > 0 ? manualTotalAmount / totalChargeableUnits : 0;
-          }
-
-          // v1.7: tarifa especial — usar precio manual como base
-          // Solo la primera cama lleva el precio en full_room, el resto = 0
-          if (saleMode === 'full_room') {
-            basePrice = bedId === bedIds[0] ? effManualPricePerNight : 0;
+        // Identificar slots cobrables
+        const chargeableSlots: Array<{ bedId: string; date: string }> = [];
+        for (const bedId of bedIds) {
+          finalPricePerNight[bedId] = {};
+          if (saleMode === 'full_room' && bedId !== bedIds[0]) {
+            for (const d of perBedDates[bedId]) {
+              finalPricePerNight[bedId][d] = 0;
+            }
           } else {
-            basePrice = effManualPricePerNight;
+            for (const d of perBedDates[bedId]) {
+              chargeableSlots.push({ bedId, date: d });
+            }
           }
-        } else if (saleMode === 'full_room' && room.type === 'private') {
-          // For private rooms, we assign the full price to the first bed
-          if (bedId === bedIds[0]) {
-            const countStr = String(resolvedGuestCount);
-            basePrice = room.priceByGuestCount?.[countStr] ?? room.basePriceRoom ?? 0;
-          } else {
-            basePrice = 0; // Other beds in private room are blocked but cost 0
-          }
-        } else {
-          basePrice = bed.basePriceBed ?? room.basePriceRoom ?? 0;
         }
 
-        // v1.7: comisión OTA — si tarifa es 0, el resultado sigue siendo 0
-        const nightlyPrice = basePrice * (1 + commissionRate);
-
-        for (const d of dates) {
-          finalPricePerNight[bedId][d] = nightlyPrice;
-          finalTotalAmount += nightlyPrice;
+        const slotCount = chargeableSlots.length;
+        if (slotCount > 0) {
+          const baseCents = Math.floor(totalCents / slotCount);
+          const remainder = totalCents - (baseCents * slotCount);
+          chargeableSlots.forEach((slot, idx) => {
+            const slotCents = idx < remainder ? baseCents + 1 : baseCents;
+            finalPricePerNight[slot.bedId][slot.date] = slotCents / 100;
+          });
         }
+      } else {
+        for (const bedId of bedIds) {
+          finalPricePerNight[bedId] = {};
+          const bedSnap = bedSnaps.find(snap => snap.id === bedId);
+          const bed = bedSnap?.data() || {};
+          const dates = perBedDates[bedId];
+          
+          let basePrice = 0;
+
+          if (pricingMode === 'manual') {
+            const effManualPricePerNight = manualPricePerNight as number;
+            if (saleMode === 'full_room') {
+              basePrice = bedId === bedIds[0] ? effManualPricePerNight : 0;
+            } else {
+              basePrice = effManualPricePerNight;
+            }
+          } else if (saleMode === 'full_room' && room.type === 'private') {
+            // For private rooms, we assign the full price to the first bed
+            if (bedId === bedIds[0]) {
+              const countStr = String(resolvedGuestCount);
+              basePrice = room.priceByGuestCount?.[countStr] ?? room.basePriceRoom ?? 0;
+            } else {
+              basePrice = 0; // Other beds in private room are blocked but cost 0
+            }
+          } else {
+            basePrice = bed.basePriceBed ?? room.basePriceRoom ?? 0;
+          }
+
+          // v1.7: comisión OTA — si tarifa es 0, el resultado sigue siendo 0
+          const nightlyPrice = Math.round(basePrice * (1 + commissionRate) * 100) / 100;
+
+          for (const d of dates) {
+            finalPricePerNight[bedId][d] = nightlyPrice;
+            finalTotalAmount += nightlyPrice;
+          }
+        }
+        finalTotalAmount = Math.round(finalTotalAmount * 100) / 100;
       }
 
       const currency = estSnap.data()?.currency || 'BOB';
@@ -437,13 +488,32 @@ export async function createReservationService(
         manualTotalAmount: pricingMode === 'manual' && typeof manualTotalAmount === 'number' ? manualTotalAmount : null,
         // specialRateReason: guardar null si no aplica
         specialRateReason: pricingMode === 'manual' && specialRateReason ? specialRateReason.trim() : null,
+        idempotencyKey: cleanIdempotencyKey || null,
         createdBy: callerUid,
         createdAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       };
 
       transaction.set(reservationRef, reservationDoc);
+
+      if (idempotencyRef) {
+        transaction.set(idempotencyRef, {
+          reservationId: reservationRef.id,
+          totalAmount: finalTotalAmount,
+          createdAt: FieldValue.serverTimestamp(),
+          createdBy: callerUid,
+        });
+      }
     });
+
+    if (alreadyProcessed) {
+      return {
+        success: true as const,
+        reservationId: finalReservationId,
+        totalAmount: finalTotalAmount,
+        alreadyProcessed: true,
+      };
+    }
 
     return { success: true as const, reservationId: reservationRef.id, totalAmount: finalTotalAmount };
   } catch (error: any) {

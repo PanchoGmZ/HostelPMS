@@ -9,6 +9,7 @@ import type { Guest } from '../../types/guests'
 import type { CashShift } from '../../types/cash'
 import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
 import { calculateNightlyStatus } from '../../utils/folioCalculations'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface CheckoutModalProps {
   establishmentId: string
@@ -151,6 +152,8 @@ export function CheckoutModal({
     }
   }
 
+  const { modalRef, headerProps } = useDraggableModal()
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <div
@@ -159,8 +162,9 @@ export function CheckoutModal({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
+        ref={modalRef as React.RefObject<HTMLDivElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker" style={{ color: 'var(--coral)' }}>Finalizar Estadía</span>
             <h2>Confirmar Check-out</h2>

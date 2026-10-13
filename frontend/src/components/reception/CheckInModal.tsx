@@ -10,9 +10,9 @@ import { cleanDraft } from '../guests/GuestInlineForm'
 import type { Reservation } from '../../types/reservations'
 import type { Room } from '../../types/rooms'
 import type { Guest } from '../../types/guests'
-
 import type { CashShift } from '../../types/cash'
 import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface CheckInModalProps {
   establishmentId: string
@@ -372,6 +372,8 @@ export function CheckInModal({
     }
   }
 
+  const { modalRef, headerProps } = useDraggableModal()
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
@@ -379,8 +381,9 @@ export function CheckInModal({
         style={{ maxWidth: '560px', width: '90%', maxHeight: '92vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmitCheckIn}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker">
               {isQuickReservation ? 'Reserva rápida · Datos pendientes' : 'Recepción'}

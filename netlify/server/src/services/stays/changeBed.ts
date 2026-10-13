@@ -8,6 +8,7 @@ export interface ChangeBedPayload {
   reservationId: string;
   lineId: string;
   newBedId: string;
+  effectiveDate?: string;
 }
 
 export interface ChangeBedResult {
@@ -80,21 +81,32 @@ export async function changeBedService(
           activeStayRef = doc.ref;
           activeStayData = data;
           
-          // Ampliar rango hasta el expectedCheckOutDate real
+          // Determinar fecha de inicio: si se especifica effectiveDate o si hoy es posterior al inicio, mover desde hoy
           const startDateStr = baseBedDates[0];
           const expectedCheckOutSecs = data.expectedCheckOutDate.seconds;
           const expectedCheckOutDate = new Date(expectedCheckOutSecs * 1000);
           
-          // Extraemos la fecha garantizando YYYY-MM-DD
-          const endDateStr = expectedCheckOutDate.toISOString().slice(0, 10);
-          
-          const startDateLocal = parseDateLocal(startDateStr);
+          const todayInBolivia = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/La_Paz',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+          }).format(new Date());
+
+          const endDateStr = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/La_Paz',
+            year: 'numeric', month: '2-digit', day: '2-digit',
+          }).format(expectedCheckOutDate);
+
+          const effectiveStartStr = payload.effectiveDate || (todayInBolivia > startDateStr && todayInBolivia < endDateStr ? todayInBolivia : startDateStr);
+          const effectiveStartLocal = parseDateLocal(effectiveStartStr);
           const endDateLocal = parseDateLocal(endDateStr);
-          
-          if (startDateLocal && endDateLocal && startDateLocal < endDateLocal) {
+
+          if (effectiveStartLocal && endDateLocal && effectiveStartLocal < endDateLocal) {
             bedDates = [];
-            for (let d = new Date(startDateLocal); d < endDateLocal; d.setUTCDate(d.getUTCDate() + 1)) {
-              bedDates.push(d.toISOString().slice(0, 10));
+            for (let d = new Date(effectiveStartLocal); d < endDateLocal; d.setUTCDate(d.getUTCDate() + 1)) {
+              bedDates.push(new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/La_Paz',
+                year: 'numeric', month: '2-digit', day: '2-digit',
+              }).format(d));
             }
           }
         }

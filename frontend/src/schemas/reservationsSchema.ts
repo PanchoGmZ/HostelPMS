@@ -16,6 +16,7 @@ export const createReservationSchema = z.object({
   commissionPercent: z.union([z.number().min(0).max(100), z.literal('')]).optional(),
   guestCount: z.number().min(1).optional(),
   guestIds: z.array(z.string()).optional(),
+  idempotencyKey: z.string().optional(),
 }).refine(
   (data) => {
     const inDate = new Date(`${data.checkIn}T00:00:00`)

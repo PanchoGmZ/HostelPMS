@@ -12,6 +12,8 @@ import type { GuestSlot } from '../guests/MultiGuestSection'
 import type { CashShift } from '../../types/cash'
 import { IntegratedPayment, type PaymentData } from './IntegratedPayment'
 import { cleanDraft, countries } from '../guests/GuestInlineForm'
+import { NumericInput } from '../common/NumericInput'
+import { useDraggableModal } from '../../hooks/useDraggableModal'
 
 interface WalkInModalProps {
   establishmentId: string
@@ -87,9 +89,10 @@ export function WalkInModal({
   // v1.15: Multi-guest slots (reemplaza guestIds array de strings)
   const [companionSlots, setCompanionSlots] = useState<GuestSlot[]>([])
 
-  // v1.7: pricingMode + tarifa especial
-  const [pricingMode, setPricingMode] = useState<'standard' | 'manual'>('standard')
-  const [manualPricePerNight, setManualPricePerNight] = useState<number>(0)
+  // v1.7/Fase 3: tarifas y precios negociados
+  const [customPricePerNight, setCustomPricePerNight] = useState<number | null>(null)
+  const [customTotalAmount, setCustomTotalAmount] = useState<number | null>(null)
+  const [showSpecialReason, setShowSpecialReason] = useState(false)
   const [specialRateReason, setSpecialRateReason] = useState('Voluntariado')
   const [specialRateNote, setSpecialRateNote] = useState('')
   // precio estándar calculado (para display)
@@ -101,6 +104,7 @@ export function WalkInModal({
   const [createdGuestId, setCreatedGuestId] = useState<string | null>(null)
   const [createdCompanionIds, setCreatedCompanionIds] = useState<string[]>([])
   const isSubmittingRef = useRef(false)
+  const reservationIdempotencyKeyRef = useRef<string>(crypto.randomUUID())
 
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
 
@@ -179,14 +183,23 @@ export function WalkInModal({
     })
   }, [guestCount])
 
+  const nightsCount = typeof nights === 'number' && nights >= 1 ? nights : 1
+  const suggestedTotal = nightsCount * standardPricePerNight
+
+  const isPriceModified = (customPricePerNight !== null && customPricePerNight !== standardPricePerNight) ||
+                          (customTotalAmount !== null && customTotalAmount !== suggestedTotal)
+
+  const pricingMode: 'standard' | 'manual' = isPriceModified ? 'manual' : 'standard'
+
   // El precio por noche efectivo para el total estimado
-  const effectivePricePerNight = pricingMode === 'manual' ? manualPricePerNight : standardPricePerNight
+  const effectivePricePerNight = customPricePerNight !== null
+    ? customPricePerNight
+    : standardPricePerNight
 
   const totalEstimate = useMemo(() => {
-    // v1.7-hotfix: '' cuenta como 1 solo para el preview
-    const n = typeof nights === 'number' && nights >= 1 ? nights : 1
-    return n * Math.max(0, effectivePricePerNight)
-  }, [nights, effectivePricePerNight])
+    if (customTotalAmount !== null) return customTotalAmount
+    return nightsCount * Math.max(0, effectivePricePerNight)
+  }, [nightsCount, effectivePricePerNight, customTotalAmount])
 
   // Filter existing guests
   const filteredGuests = useMemo(() => {
@@ -240,14 +253,14 @@ export function WalkInModal({
       return
     }
 
-    // v1.7: validar precio manual
-    if (pricingMode === 'manual') {
-      if (typeof manualPricePerNight !== 'number' || manualPricePerNight < 0 || !isFinite(manualPricePerNight)) {
+    // v1.7: validar precio manual o negociado
+    if (isPriceModified) {
+      if (typeof effectivePricePerNight !== 'number' || effectivePricePerNight < 0 || !isFinite(effectivePricePerNight)) {
         setFormError('El precio manual debe ser un número mayor o igual a 0.')
         return
       }
-      if (!effectiveReason.trim()) {
-        setFormError('Ingresa un motivo para la tarifa especial.')
+      if (typeof totalEstimate !== 'number' || totalEstimate < 0 || !isFinite(totalEstimate)) {
+        setFormError('El total debe ser un número mayor o igual a 0.')
         return
       }
     }
@@ -347,6 +360,7 @@ export function WalkInModal({
         // v1.12: checkIn usa checkInDateStr (puede ser retroactivo)
         const resResult = await createReservation({
           establishmentId,
+          idempotencyKey: reservationIdempotencyKeyRef.current,
           guestId: currentGuestId,
           roomId: selectedRoomObj.id,
           bedIds: effectiveBedIds,
@@ -359,11 +373,12 @@ export function WalkInModal({
           guestCount: resolvedGuestCount,
           // v1.15: usar companionGuestIds en lugar de dropdown IDs
           guestIds: isPrivate ? currentCompanions : undefined,
-          // v1.7: pricingMode y precio manual
+          // v1.7/Fase 3: pricingMode y precio negociado
           pricingMode,
-          ...(pricingMode === 'manual' ? {
-            manualPricePerNight,
-            specialRateReason: effectiveReason,
+          ...(isPriceModified ? {
+            manualPricePerNight: effectivePricePerNight,
+            manualTotalAmount: totalEstimate,
+            specialRateReason: effectiveReason || 'Precio negociado en recepción',
           } : {}),
         })
 
@@ -410,6 +425,8 @@ export function WalkInModal({
     }
   }
 
+  const { modalRef, headerProps } = useDraggableModal()
+
   return (
     <div className="modal-backdrop" onClick={onClose} role="presentation">
       <form
@@ -417,8 +434,9 @@ export function WalkInModal({
         style={{ maxWidth: '640px', maxHeight: '90vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
         onSubmit={handleSubmit}
+        ref={modalRef as React.RefObject<HTMLFormElement>}
       >
-        <div className="modal-header">
+        <div className="modal-header" {...headerProps}>
           <div>
             <span className="kicker">Llegada Inmediata (Mostrador)</span>
             <h2>Walk-in: Recepción</h2>
@@ -721,103 +739,132 @@ export function WalkInModal({
         {/* Noches */}
         <div style={{ marginBottom: '14px' }}>
           <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Noches</label>
-          <input
-            id="walk-in-nights"
-            type="number"
-            min="1"
-            value={nights}
-            onChange={(e) => {
-              // v1.7-hotfix: permitir '' temporalmente — no colapsar a 1 mientras el usuario edita
-              const val = e.target.value
-              if (val === '') {
-                setNights('')
-              } else {
-                const n = parseInt(val, 10)
-                if (!isNaN(n) && n >= 0) setNights(n)
-              }
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-              }
-            }}
-            style={{ width: '100px' }}
-          />
+          <div style={{ width: '120px' }}>
+            <NumericInput
+              id="walk-in-nights"
+              min={1}
+              allowDecimals={false}
+              value={typeof nights === 'number' ? nights : 1}
+              onChange={(val) => setNights(Math.max(1, Math.round(val)))}
+            />
+          </div>
         </div>
 
-        {/* v1.7: Selector de Tarifa */}
-        <div style={{ marginBottom: '14px' }}>
-          <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block', fontSize: '13px' }}>Tarifa</label>
-          <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-            <label
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-                padding: '8px 14px', borderRadius: 'var(--radius-sm)',
-                border: `2px solid ${pricingMode === 'standard' ? 'var(--teal)' : 'var(--line)'}`,
-                background: pricingMode === 'standard' ? 'var(--mint)' : 'transparent',
-                fontWeight: pricingMode === 'standard' ? 600 : 400, flex: 1, justifyContent: 'center',
-                fontSize: '13px',
-              }}
-            >
-              <input type="radio" name="pricingModeWalkin" value="standard" checked={pricingMode === 'standard'} onChange={() => setPricingMode('standard')} style={{ display: 'none' }} />
-              Tarifa normal
-            </label>
-            <label
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer',
-                padding: '8px 14px', borderRadius: 'var(--radius-sm)',
-                border: `2px solid ${pricingMode === 'manual' ? 'var(--coral)' : 'var(--line)'}`,
-                background: pricingMode === 'manual' ? '#fff0eb' : 'transparent',
-                fontWeight: pricingMode === 'manual' ? 600 : 400, flex: 1, justifyContent: 'center',
-                fontSize: '13px',
-              }}
-            >
-              <input type="radio" name="pricingModeWalkin" value="manual" checked={pricingMode === 'manual'} onChange={() => setPricingMode('manual')} style={{ display: 'none' }} />
-              Tarifa especial
-            </label>
+        {/* Tarifa y Negociación de Precio */}
+        <div style={{
+          marginBottom: '14px',
+          padding: '12px',
+          background: isPriceModified ? '#fff8f5' : 'var(--paper)',
+          borderRadius: 'var(--radius-sm)',
+          border: `1px solid ${isPriceModified ? 'var(--coral, #f97316)' : 'var(--line)'}`,
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}>Tarifa sugerida: </span>
+              <strong>{standardPricePerNight} BOB/noche</strong>
+              <span style={{ fontSize: '12px', color: 'var(--muted)' }}> (Total sugerido: {suggestedTotal} BOB)</span>
+            </div>
+            {isPriceModified && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCustomPricePerNight(null)
+                  setCustomTotalAmount(null)
+                }}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--coral)',
+                  fontSize: '11px',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  padding: 0,
+                }}
+              >
+                Restablecer tarifa estándar
+              </button>
+            )}
           </div>
 
-          {pricingMode === 'standard' ? (
-            <div style={{ padding: '8px 12px', background: 'var(--paper)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--line)', fontSize: '13px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--muted)' }}>Precio por noche (calculado):</span>
-              <strong>{standardPricePerNight} BOB</strong>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                Precio por noche (BOB)
+              </label>
+              <NumericInput
+                min={0}
+                value={effectivePricePerNight}
+                onChange={(val) => {
+                  setCustomPricePerNight(val)
+                  setCustomTotalAmount(Math.round(val * nightsCount * 100) / 100)
+                }}
+                placeholder={String(standardPricePerNight)}
+              />
             </div>
-          ) : (
-            <div style={{ padding: '12px', background: '#fff8f5', borderRadius: 'var(--radius-sm)', border: '1px solid #f9d5c5' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: specialRateReason === 'Otro' ? '10px' : '0' }}>
+            <div>
+              <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>
+                Total pactado ({nightsCount} noches)
+              </label>
+              <NumericInput
+                min={0}
+                value={totalEstimate}
+                onChange={(val) => {
+                  setCustomTotalAmount(val)
+                  setCustomPricePerNight(nightsCount > 0 ? Math.round((val / nightsCount) * 100) / 100 : val)
+                }}
+                placeholder={String(suggestedTotal)}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginTop: '8px', fontSize: '12px', color: isPriceModified ? 'var(--coral)' : 'var(--muted)' }}>
+            Resumen: {nightsCount} noche{nightsCount === 1 ? '' : 's'} × {effectivePricePerNight} BOB = <strong>{totalEstimate} BOB</strong>
+            {isPriceModified && ' · (Precio negociado)'}
+          </div>
+
+          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed var(--line)' }}>
+            <button
+              type="button"
+              onClick={() => setShowSpecialReason(!showSpecialReason)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--muted)',
+                fontSize: '11px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: 0,
+              }}
+            >
+              {showSpecialReason ? '− Ocultar motivo / convenio' : '+ Asignar motivo o convenio especial (opcional)'}
+            </button>
+
+            {showSpecialReason && (
+              <div style={{ marginTop: '8px', display: 'grid', gridTemplateColumns: specialRateReason === 'Otro' ? '1fr 1fr' : '1fr', gap: '8px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Precio por noche (BOB)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.5}
-                    value={manualPricePerNight}
-                    onChange={(e) => setManualPricePerNight(Number(e.target.value))}
-                    placeholder="0"
-                    style={{ borderColor: 'var(--coral)' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Motivo</label>
-                  <select value={specialRateReason} onChange={(e) => setSpecialRateReason(e.target.value)}>
+                  <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Motivo</label>
+                  <select value={specialRateReason} onChange={(e) => setSpecialRateReason(e.target.value)} style={{ fontSize: '12px' }}>
                     {SPECIAL_RATE_REASONS.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
+                {specialRateReason === 'Otro' && (
+                  <div>
+                    <label style={{ fontSize: '11px', display: 'block', marginBottom: '2px' }}>Nota adicional</label>
+                    <input
+                      type="text"
+                      value={specialRateNote}
+                      onChange={(e) => setSpecialRateNote(e.target.value)}
+                      placeholder="Describir motivo..."
+                      maxLength={100}
+                      style={{ fontSize: '12px' }}
+                    />
+                  </div>
+                )}
               </div>
-              {specialRateReason === 'Otro' && (
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 600, marginBottom: '4px', display: 'block' }}>Nota adicional</label>
-                  <input
-                    type="text"
-                    value={specialRateNote}
-                    onChange={(e) => setSpecialRateNote(e.target.value)}
-                    placeholder="Describir brevemente el motivo..."
-                    maxLength={100}
-                  />
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         <div style={{ marginTop: '16px', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
