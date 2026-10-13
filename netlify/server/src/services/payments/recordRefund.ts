@@ -117,22 +117,33 @@ export async function recordRefundService(
         }
       }
 
-      const updatedPayments = [
-        ...payments,
-        {
-          id: refundId,
-          relatedPaymentId: paymentId,
-          amount: -amount,
-          method: 'refund',
-          originalMethod: originalPayment.method || null,
-          status: 'completed',
-          reference: `Reembolso de ${paymentId}`,
-          currencyCode: originalPayment.currencyCode || 'BOB',
-          receivedAmount: -amount,
-          allocations: refundAllocations,
-          createdAt: Timestamp.now(),
-        },
-      ];
+      const newRefund: Record<string, any> = {
+        id: refundId,
+        relatedPaymentId: paymentId,
+        amount: -amount,
+        method: 'refund',
+        originalMethod: originalPayment.method || null,
+        status: 'completed',
+        reference: `Reembolso de ${paymentId}`,
+        currencyCode: originalPayment.currencyCode || 'BOB',
+        receivedAmount: -amount,
+        createdAt: Timestamp.now(),
+      };
+      if (refundAllocations && refundAllocations.length > 0) {
+        newRefund.allocations = refundAllocations;
+      }
+
+      const sanitizedExistingPayments = (payments || []).map((p: any) => {
+        const clean: Record<string, any> = {};
+        for (const [k, v] of Object.entries(p)) {
+          if (v !== undefined) {
+            clean[k] = v;
+          }
+        }
+        return clean;
+      });
+
+      const updatedPayments = [...sanitizedExistingPayments, newRefund];
 
       const newTotalPaid = (folioData.totalPaid || 0) - amount;
       const newBalance = newTotalPaid - (folioData.totalCharges || 0);

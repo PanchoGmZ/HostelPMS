@@ -77,6 +77,7 @@ export function ExtendStayModal({
   const [formError, setFormError] = useState<string | null>(null)
 
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
+  const isSubmittingRef = useRef(false)
 
   const extraNights = useMemo(() => {
     const from = new Date(`${currentCheckOutStr}T12:00:00.000-04:00`)
@@ -97,6 +98,8 @@ export function ExtendStayModal({
     e.preventDefault()
     setFormError(null)
 
+    if (isSubmittingRef.current || submitting) return
+
     if (extraNights < 1) {
       setFormError('La nueva fecha debe ser posterior a la actual.')
       return
@@ -114,6 +117,7 @@ export function ExtendStayModal({
       return
     }
 
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       await extendStay({
@@ -132,6 +136,7 @@ export function ExtendStayModal({
           currencyCode: payCurrency,
           receivedAmount: payReceived,
           idempotencyKey: idempotencyKeyRef.current,
+          allocations: [{ type: 'lodging', amount: extensionTotal }],
         })
       }
 
@@ -145,6 +150,7 @@ export function ExtendStayModal({
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
 

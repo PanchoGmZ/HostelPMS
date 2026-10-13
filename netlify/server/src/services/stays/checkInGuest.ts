@@ -53,6 +53,7 @@ export async function checkInGuestService(
 
   try {
     await db.runTransaction(async (transaction) => {
+      // ── PHASE 1: ALL READS & VALIDATIONS ───────────────────────────
       const resSnap = await transaction.get(reservationRef);
       if (!resSnap.exists) {
         throw new ReservationError('La reserva no existe.', 404);
@@ -91,6 +92,19 @@ export async function checkInGuestService(
         );
       }
 
+      // v1.17 / v1.19.1: Validar turno de caja en FASE 1 ANTES de cualquier escritura si hay pago inicial
+      let openCashShiftDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+      if (initialPayment && typeof initialPayment.amount === 'number' && initialPayment.amount > 0) {
+        const cashShiftsSnap = await transaction.get(
+          estRef.collection('cashShifts').where('status', '==', 'open').limit(1)
+        );
+        if (cashShiftsSnap.empty) {
+          throw new ReservationError('Debes abrir un turno de caja antes de registrar un pago.', 400);
+        }
+        openCashShiftDoc = cashShiftsSnap.docs[0];
+      }
+
+      // ── PHASE 2: ALL CALCULATIONS & WRITES ──────────────────────────
       // v1.12: capturar para regenerar dailySummaries si es retroactivo
       if (reservation.checkInDate && typeof reservation.checkInDate.seconds === 'number') {
         retroContext.checkInSeconds = reservation.checkInDate.seconds;
@@ -198,16 +212,9 @@ export async function checkInGuestService(
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // v1.17: Si hay pago inicial real, registrar en caja si hay turno abierto.
-      if (initialPayment && typeof initialPayment.amount === 'number' && initialPayment.amount > 0) {
-        const cashShiftsSnap = await transaction.get(
-          estRef.collection('cashShifts').where('status', '==', 'open').limit(1)
-        );
-        if (cashShiftsSnap.empty) {
-          throw new ReservationError('Debes abrir un turno de caja antes de registrar un pago.', 400);
-        }
-        
-        const cashShiftRef = cashShiftsSnap.docs[0].ref;
+      // Si hay pago inicial real y turno de caja abierto validado en Fase 1, registrar movimiento
+      if (openCashShiftDoc && initialPayment && typeof initialPayment.amount === 'number' && initialPayment.amount > 0) {
+        const cashShiftRef = openCashShiftDoc.ref;
         const movRef = cashShiftRef.collection('movements').doc();
         transaction.set(movRef, {
           type: 'payment',

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   AlertTriangle,
   CheckCircle2,
@@ -20,11 +20,13 @@ import { processPayment, PAYMENT_METHODS } from '../../services/payments/payment
 import { listStays } from '../../services/stays/staysService'
 import { searchGuests } from '../../services/guests/guestsService'
 import { listRooms } from '../../services/rooms/roomsService'
+import { listCashShifts } from '../../services/cash/cashService'
 import { processPaymentSchema } from '../../schemas/foliosSchema'
 import type { Folio } from '../../types/folios'
 import type { Stay } from '../../types/stays'
 import type { Guest } from '../../types/guests'
 import type { Room } from '../../types/rooms'
+import type { CashShift } from '../../types/cash'
 import { CURRENCIES } from '../../utils/currencies'
 import './FoliosPage.css'
 
@@ -47,6 +49,7 @@ export function FoliosPage() {
   const [stays, setStays] = useState<Stay[]>([])
   const [guests, setGuests] = useState<Guest[]>([])
   const [rooms, setRooms] = useState<Room[]>([])
+  const [activeCashShift, setActiveCashShift] = useState<CashShift | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -66,16 +69,18 @@ export function FoliosPage() {
     setLoading(true)
     setError(null)
     try {
-      const [nextFolios, nextStays, nextGuests, nextRooms] = await Promise.all([
+      const [nextFolios, nextStays, nextGuests, nextRooms, shifts] = await Promise.all([
         listFolios(establishmentId),
         listStays(establishmentId),
         searchGuests(establishmentId, ''),
         listRooms(establishmentId),
+        listCashShifts(establishmentId),
       ])
       setFolios(nextFolios)
       setStays(nextStays)
       setGuests(nextGuests)
       setRooms(nextRooms)
+      setActiveCashShift(shifts.find((s) => s.status === 'open') ?? null)
     } catch {
       setError('No se pudieron cargar los folios financieros.')
     } finally {
@@ -379,6 +384,7 @@ export function FoliosPage() {
         <ProcessPaymentModal
           establishmentId={establishmentId}
           folio={folioForPayment}
+          activeCashShift={activeCashShift}
           onClose={() => setFolioForPayment(null)}
           onSaved={() => {
             setFolioForPayment(null)
@@ -626,6 +632,7 @@ function FolioDetailModal({
 interface ProcessPaymentModalProps {
   establishmentId: string
   folio: Folio
+  activeCashShift: CashShift | null
   onClose: () => void
   onSaved: () => void
   onError: (msg: string) => void
@@ -634,21 +641,52 @@ interface ProcessPaymentModalProps {
 function ProcessPaymentModal({
   establishmentId,
   folio,
+  activeCashShift,
   onClose,
   onSaved,
   onError,
 }: ProcessPaymentModalProps) {
-  const [amount, setAmount] = useState<number>(folio.balance < 0 ? Math.abs(folio.balance) : 0)
+  const pendingDebt = folio.balance < 0 ? Math.abs(folio.balance) : 0
+  const [amount, setAmount] = useState<number>(pendingDebt)
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
   const [reference, setReference] = useState<string>('')
   const [currencyCode, setCurrencyCode] = useState<string>('BOB')
-  const [receivedAmount, setReceivedAmount] = useState<number>(folio.balance < 0 ? Math.abs(folio.balance) : 0)
+  const [receivedAmount, setReceivedAmount] = useState<number>(pendingDebt)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+
+  const isSubmittingRef = useRef(false)
+  const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
+
+  const handleAmountChange = (val: number) => {
+    setAmount(val)
+    if (currencyCode === 'BOB') {
+      setReceivedAmount(val)
+    }
+  }
+
+  const handleCurrencyChange = (curr: string) => {
+    setCurrencyCode(curr)
+    if (curr === 'BOB') {
+      setReceivedAmount(amount)
+    }
+  }
 
   const submit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setFormError(null)
+
+    if (isSubmittingRef.current || submitting) return
+
+    if (!isShiftOpen) {
+      setFormError('No hay un turno de caja abierto. Abre el turno de caja antes de registrar pagos.')
+      return
+    }
+
+    if (amount <= 0) {
+      setFormError('El monto del pago debe ser mayor a 0.')
+      return
+    }
 
     const validation = processPaymentSchema.safeParse({
       stayId: folio.stayId,
@@ -662,6 +700,7 @@ function ProcessPaymentModal({
       return
     }
 
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       await processPayment({
@@ -671,17 +710,18 @@ function ProcessPaymentModal({
         method,
         reference: reference.trim() || null,
         currencyCode,
-        receivedAmount,
+        receivedAmount: currencyCode === 'BOB' ? amount : receivedAmount,
+        expectedBalance: folio.balance,
       })
       onSaved()
-    } catch {
-      const msg = 'El pago no pudo procesarse. La Cloud Function "recordPayment" debe estar disponible en el backend.'
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al registrar el pago.'
       setFormError(msg)
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
-
   }
 
   return (
@@ -697,6 +737,19 @@ function ProcessPaymentModal({
           </button>
         </div>
 
+        {/* Turno de caja */}
+        {!isShiftOpen ? (
+          <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '5px', fontSize: '12px', color: '#991b1b', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <AlertTriangle size={15} />
+            <span><strong>Caja cerrada:</strong> Abre el turno de caja antes de registrar pagos.</span>
+          </div>
+        ) : (
+          <div style={{ padding: '8px 12px', background: '#eaf6ed', border: '1px solid #b6e2c1', borderRadius: '5px', fontSize: '12px', color: '#166534', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <CheckCircle2 size={15} />
+            <span>Turno de caja activo: #{activeCashShift.id.slice(-6)}</span>
+          </div>
+        )}
+
         {formError && (
           <div className="form-error" style={{ margin: '0 0 10px' }}>
             <AlertTriangle size={15} style={{ display: 'inline', marginRight: '6px' }} />
@@ -704,28 +757,21 @@ function ProcessPaymentModal({
           </div>
         )}
 
-        <div style={{ padding: '8px 12px', background: '#eaf6ed', borderRadius: '5px', fontSize: '12px', marginBottom: '10px' }}>
-          Deuda actual del folio: <strong>{folio.balance < 0 ? Math.abs(folio.balance) : 0} {folio.currency}</strong>
+        <div style={{ padding: '8px 12px', background: pendingDebt > 0 ? '#fff0eb' : '#eaf6ed', border: `1px solid ${pendingDebt > 0 ? '#f0b4a4' : '#b6e2c1'}`, borderRadius: '5px', fontSize: '12px', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>Deuda actual del folio:</span>
+          <strong style={{ fontSize: '14px', color: pendingDebt > 0 ? '#d97706' : '#166534' }}>
+            {pendingDebt.toFixed(2)} {folio.currency}
+          </strong>
         </div>
 
-        <label>
-          Monto a pagar aplicado a folio (BOB)
-          <input
-            type="number"
-            min="0.5"
-            step="0.5"
-            value={amount}
-            onChange={(e) => setAmount(Number(e.target.value))}
-            required
-          />
-        </label>
-
+        {/* Moneda y Método */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
           <label>
             Moneda recibida
             <select
               value={currencyCode}
-              onChange={(e) => setCurrencyCode(e.target.value)}
+              onChange={(e) => handleCurrencyChange(e.target.value)}
+              disabled={!isShiftOpen}
             >
               {CURRENCIES.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -734,37 +780,81 @@ function ProcessPaymentModal({
               ))}
             </select>
           </label>
+
           <label>
-            Monto recibido físico
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={receivedAmount}
-              onChange={(e) => setReceivedAmount(Number(e.target.value))}
-              required
-            />
+            Método de Pago
+            <select value={method} onChange={(e) => setMethod(e.target.value as any)} disabled={!isShiftOpen}>
+              {PAYMENT_METHODS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
 
-        <label>
-          Método de Pago
-          <select value={method} onChange={(e) => setMethod(e.target.value as any)}>
-            {PAYMENT_METHODS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* Inputs monetarios: para BOB sólo un input */}
+        {currencyCode === 'BOB' ? (
+          <div style={{ marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+              <label style={{ margin: 0 }}>Monto a cobrar (BOB) *</label>
+              {pendingDebt > 0 && amount !== pendingDebt && (
+                <button
+                  type="button"
+                  style={{ background: 'none', border: 'none', color: '#059669', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                  onClick={() => handleAmountChange(pendingDebt)}
+                >
+                  Cobrar todo ({pendingDebt} BOB)
+                </button>
+              )}
+            </div>
+            <input
+              type="number"
+              min="0.5"
+              step="0.5"
+              value={amount || ''}
+              onChange={(e) => handleAmountChange(Number(e.target.value))}
+              disabled={!isShiftOpen}
+              required
+            />
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+            <label>
+              Monto recibido ({currencyCode}) *
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={receivedAmount || ''}
+                onChange={(e) => setReceivedAmount(Number(e.target.value))}
+                disabled={!isShiftOpen}
+                required
+              />
+            </label>
+            <label>
+              Monto aplicado (BOB) *
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                value={amount || ''}
+                onChange={(e) => setAmount(Number(e.target.value))}
+                disabled={!isShiftOpen}
+                required
+              />
+            </label>
+          </div>
+        )}
 
-        <label>
+        <label style={{ marginBottom: '12px' }}>
           Referencia / Comprobante (Opcional)
           <input
             type="text"
             placeholder="N° de transacción, lote, voucher o nota..."
             value={reference}
             onChange={(e) => setReference(e.target.value)}
+            disabled={!isShiftOpen}
           />
         </label>
 
@@ -772,7 +862,11 @@ function ProcessPaymentModal({
           <button className="btn-outline" type="button" onClick={onClose} disabled={submitting}>
             Cancelar
           </button>
-          <button className="btn-orange" type="submit" disabled={submitting}>
+          <button
+            className="btn-orange"
+            type="submit"
+            disabled={submitting || !isShiftOpen || amount <= 0}
+          >
             {submitting ? 'Procesando pago...' : 'Autorizar y registrar pago'}
           </button>
         </div>

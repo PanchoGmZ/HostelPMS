@@ -23,6 +23,7 @@ interface IntegratedPaymentProps {
   onChange: (data: PaymentData) => void
   showIntentOptions?: boolean
   defaultIntent?: PaymentIntent
+  allowNoneOption?: boolean
   showAllocations?: boolean
   suggestedAllocations?: PaymentAllocation[]
 }
@@ -35,12 +36,15 @@ export function IntegratedPayment({
   onChange,
   showIntentOptions = true,
   defaultIntent = 'full',
+  allowNoneOption = true,
   showAllocations = false,
   suggestedAllocations = []
 }: IntegratedPaymentProps) {
   const pendingBalance = Math.max(0, totalCharges - alreadyPaid)
 
-  const [intent, setIntent] = useState<PaymentIntent>(pendingBalance > 0 ? defaultIntent : 'none')
+  const [intent, setIntent] = useState<PaymentIntent>(
+    pendingBalance > 0 ? defaultIntent : (allowNoneOption ? 'none' : 'full')
+  )
   const [method, setMethod] = useState<'cash' | 'card' | 'transfer' | 'qr'>('cash')
   const [currencyCode, setCurrencyCode] = useState<string>(defaultCurrency)
   
@@ -136,6 +140,13 @@ export function IntegratedPayment({
     }
   }, [receivedAmount, currencyCode])
 
+  // Sync intent if pendingBalance changes to positive and intent was none
+  useEffect(() => {
+    if (pendingBalance > 0 && intent === 'none' && !allowNoneOption) {
+      setIntent(defaultIntent)
+    }
+  }, [pendingBalance, defaultIntent, allowNoneOption, intent])
+
   const handleNumberBlur = (val: string, setterNum: (n: number) => void, setterStr: (s: string) => void) => {
     let parsed = parseFloat(val)
     if (isNaN(parsed) || parsed < 0) parsed = 0
@@ -144,10 +155,10 @@ export function IntegratedPayment({
     setterStr(norm)
   }
 
-  if (pendingBalance <= 0 && showIntentOptions) {
+  if (pendingBalance <= 0) {
     return (
-      <div style={{ background: 'var(--ok-bg, #f0fdf4)', padding: '10px', borderRadius: '6px', border: '1px solid var(--ok-line, #bbf7d0)', fontSize: '13px' }}>
-        No hay saldo pendiente.
+      <div style={{ background: 'var(--ok-bg, #f0fdf4)', padding: '12px', borderRadius: '6px', border: '1px solid var(--ok-line, #bbf7d0)', fontSize: '13px', color: 'var(--ok, #166534)' }}>
+        El folio está al día. No hay saldo pendiente.
       </div>
     )
   }
@@ -177,6 +188,8 @@ export function IntegratedPayment({
                 setIntent('full')
                 setReceivedAmount(pendingBalance)
                 setReceivedStr(String(pendingBalance))
+                setAmountApplied(pendingBalance)
+                setAmountStr(String(pendingBalance))
               }} />
               Cobrar todo
             </label>
@@ -185,13 +198,21 @@ export function IntegratedPayment({
                 setIntent('partial')
                 setReceivedStr('')
                 setAmountStr('')
+                setReceivedAmount(0)
+                setAmountApplied(0)
               }} />
               Pago parcial
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
-              <input type="radio" name="payIntent" checked={intent === 'none'} onChange={() => setIntent('none')} />
-              Dejar pendiente
-            </label>
+            {allowNoneOption && (
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '13px' }}>
+                <input type="radio" name="payIntent" checked={intent === 'none'} onChange={() => {
+                  setIntent('none')
+                  setReceivedAmount(0)
+                  setAmountApplied(0)
+                }} />
+                Dejar pendiente
+              </label>
+            )}
           </div>
         </>
       )}

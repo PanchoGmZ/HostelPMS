@@ -26,12 +26,14 @@ export function PaymentModal({
   onSuccess,
   onError,
 }: PaymentModalProps) {
-  const currentBalance = folio?.balance ?? 0
+  // En el PMS balance < 0 significa deuda del huésped (totalPaid - totalCharges)
+  const pendingDebt = folio ? Math.max(0, -(folio.balance ?? 0)) : 0
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
+  const isSubmittingRef = useRef(false)
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
 
   const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
@@ -40,8 +42,15 @@ export function PaymentModal({
     e.preventDefault()
     setFormError(null)
 
+    if (isSubmittingRef.current || submitting) return
+
     if (!isShiftOpen) {
       setFormError('No hay una caja abierta. Abre el turno de caja para registrar pagos.')
+      return
+    }
+
+    if (pendingDebt <= 0) {
+      setFormError('El folio no tiene deuda pendiente.')
       return
     }
 
@@ -50,6 +59,7 @@ export function PaymentModal({
       return
     }
 
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       await processPayment({
@@ -61,7 +71,7 @@ export function PaymentModal({
         currencyCode: paymentData.currencyCode,
         receivedAmount: paymentData.receivedAmount,
         idempotencyKey: idempotencyKeyRef.current,
-        expectedBalance: currentBalance,
+        expectedBalance: folio?.balance,
         allocations: paymentData.allocations,
       })
 
@@ -76,6 +86,7 @@ export function PaymentModal({
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
 
@@ -123,24 +134,35 @@ export function PaymentModal({
         )}
 
         {/* Balance callout */}
-        <div style={{ padding: '10px 14px', background: currentBalance > 0 ? 'var(--danger-bg)' : 'var(--ok-bg)', border: `1px solid ${currentBalance > 0 ? 'var(--danger-line)' : 'var(--ok-line)'}`, borderRadius: 'var(--radius-sm)', marginBottom: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontSize: '13px', color: currentBalance > 0 ? 'var(--danger)' : 'var(--ok)' }}>
-            Saldo pendiente del folio:
+        <div style={{
+          padding: '10px 14px',
+          background: pendingDebt > 0 ? 'var(--danger-bg)' : 'var(--ok-bg)',
+          border: `1px solid ${pendingDebt > 0 ? 'var(--danger-line)' : 'var(--ok-line)'}`,
+          borderRadius: 'var(--radius-sm)',
+          marginBottom: '14px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span style={{ fontSize: '13px', color: pendingDebt > 0 ? 'var(--danger)' : 'var(--ok)' }}>
+            {pendingDebt > 0 ? 'Saldo pendiente del folio:' : 'Saldo del folio (al día):'}
           </span>
-          <strong style={{ fontSize: '17px', color: currentBalance > 0 ? 'var(--danger)' : 'var(--ok)' }}>
-            {currentBalance.toFixed(2)} {folio?.currency ?? 'BOB'}
+          <strong style={{ fontSize: '17px', color: pendingDebt > 0 ? 'var(--danger)' : 'var(--ok)' }}>
+            {pendingDebt.toFixed(2)} {folio?.currency ?? 'BOB'}
           </strong>
         </div>
 
-        {/* Use IntegratedPayment with showIntentOptions=false so it forces payment */}
+        {/* Use IntegratedPayment with showIntentOptions=true and allowNoneOption=false */}
         <div style={{ marginBottom: '16px' }}>
           <IntegratedPayment
-            totalCharges={currentBalance}
+            totalCharges={pendingDebt}
             alreadyPaid={0}
             isShiftOpen={isShiftOpen}
             defaultCurrency={folio?.currency ?? 'BOB'}
             onChange={setPaymentData}
-            showIntentOptions={false}
+            showIntentOptions={true}
+            allowNoneOption={false}
+            defaultIntent="full"
             showAllocations={true}
             suggestedAllocations={(() => {
               if (!folio) return []
@@ -163,7 +185,7 @@ export function PaymentModal({
           <button
             type="submit"
             className="primary-button"
-            disabled={submitting || !isShiftOpen}
+            disabled={submitting || !isShiftOpen || pendingDebt <= 0 || !paymentData || paymentData.amount <= 0}
           >
             {submitting ? (
               <>

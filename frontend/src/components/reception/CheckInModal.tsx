@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, type FormEvent } from 'react'
+import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
 import { X, AlertTriangle, Loader2, UserCheck, UserPlus, Search, CheckCircle2, Clock } from 'lucide-react'
 import { checkInGuest } from '../../services/stays/staysService'
 import { modifyReservation } from '../../services/reservations/reservationsService'
@@ -98,6 +98,7 @@ export function CheckInModal({
   const defaultCurrency = currentRes?.currency ?? 'BOB'
   
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
+  const isSubmittingRef = useRef(false)
   
   const isShiftOpen = !!activeCashShift && activeCashShift.status === 'open'
 
@@ -312,6 +313,8 @@ export function CheckInModal({
       }
     }
 
+    if (isSubmittingRef.current || submitting) return
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       // v1.15: Guardar acompañantes nuevos y recolectar IDs
@@ -365,6 +368,7 @@ export function CheckInModal({
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
 

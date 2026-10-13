@@ -123,20 +123,32 @@ export async function recordPaymentService(
         return;
       }
 
-      const updatedPayments = [
-        ...(folioData.payments || []),
-        {
-          id: paymentId,
-          amount,
-          method,
-          status: 'completed',
-          reference: reference || null,
-          currencyCode: currencyCode || 'BOB',
-          receivedAmount: receivedAmount ?? amount,
-          allocations: finalAllocations.length > 0 ? finalAllocations : undefined,
-          createdAt: Timestamp.now(),
-        },
-      ];
+      const newPayment: Record<string, any> = {
+        id: paymentId,
+        amount,
+        method,
+        status: 'completed',
+        reference: reference || null,
+        currencyCode: currencyCode || 'BOB',
+        receivedAmount: receivedAmount ?? amount,
+        createdAt: Timestamp.now(),
+      };
+      if (finalAllocations.length > 0) {
+        newPayment.allocations = finalAllocations;
+      }
+
+      // Sanitizar pagos previos sin alterar datos legítimos ni inventar allocations
+      const sanitizedExistingPayments = (folioData.payments || []).map((p: any) => {
+        const clean: Record<string, any> = {};
+        for (const [k, v] of Object.entries(p)) {
+          if (v !== undefined) {
+            clean[k] = v;
+          }
+        }
+        return clean;
+      });
+
+      const updatedPayments = [...sanitizedExistingPayments, newPayment];
 
       // Cálculo server-side
       const newTotalPaid = (folioData.totalPaid || 0) + amount;

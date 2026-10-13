@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, type FormEvent } from 'react'
+import { useState, useMemo, useEffect, useRef, type FormEvent } from 'react'
 import { X, UserPlus, UserCheck, AlertTriangle, Loader2, Info, Clock } from 'lucide-react'
 import { saveGuest } from '../../services/guests/guestsService'
 import { createReservation } from '../../services/reservations/reservationsService'
@@ -98,6 +98,9 @@ export function WalkInModal({
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [createdReservationId, setCreatedReservationId] = useState<string | null>(null)
+  const [createdGuestId, setCreatedGuestId] = useState<string | null>(null)
+  const [createdCompanionIds, setCreatedCompanionIds] = useState<string[]>([])
+  const isSubmittingRef = useRef(false)
 
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
 
@@ -267,14 +270,18 @@ export function WalkInModal({
       }
     }
 
+    if (isSubmittingRef.current || submitting) return
+    isSubmittingRef.current = true
     setSubmitting(true)
     try {
       let currentResId = createdReservationId
+      let currentGuestId = createdGuestId || finalGuestId
+      let currentCompanions = createdCompanionIds
 
       if (!currentResId) {
         // 1. If new guest, save to Firestore and get ID properly!
-        if (isNewGuest) {
-          finalGuestId = await saveGuest(
+        if (isNewGuest && !createdGuestId) {
+          currentGuestId = await saveGuest(
             establishmentId,
             {
               firstName: firstName.trim(),
@@ -293,6 +300,7 @@ export function WalkInModal({
               notes: notes.trim() || null,
             }
           )
+          setCreatedGuestId(currentGuestId)
         }
 
         // v1.15: Guardar acompañantes nuevos y recolectar IDs
@@ -300,7 +308,7 @@ export function WalkInModal({
         for (const slot of companionSlots) {
           if (slot.mode === 'empty') continue
           if (slot.mode === 'existing' && slot.existingGuestId) {
-            if (slot.existingGuestId !== finalGuestId) {
+            if (slot.existingGuestId !== currentGuestId) {
               companionGuestIds.push(slot.existingGuestId)
             }
           } else if (slot.mode === 'new' && slot.validated) {
@@ -309,6 +317,8 @@ export function WalkInModal({
             companionGuestIds.push(newCompanionId)
           }
         }
+        currentCompanions = companionGuestIds
+        setCreatedCompanionIds(companionGuestIds)
 
         // 2. Build dates array for pricePerNight (v1.12: desde checkInDateStr)
         const dates: string[] = []
@@ -337,7 +347,7 @@ export function WalkInModal({
         // v1.12: checkIn usa checkInDateStr (puede ser retroactivo)
         const resResult = await createReservation({
           establishmentId,
-          guestId: finalGuestId,
+          guestId: currentGuestId,
           roomId: selectedRoomObj.id,
           bedIds: effectiveBedIds,
           saleMode: isPrivate ? 'full_room' : 'bed',
@@ -348,7 +358,7 @@ export function WalkInModal({
           // v1.7: guestCount siempre número, nunca undefined
           guestCount: resolvedGuestCount,
           // v1.15: usar companionGuestIds en lugar de dropdown IDs
-          guestIds: isPrivate ? companionGuestIds : undefined,
+          guestIds: isPrivate ? currentCompanions : undefined,
           // v1.7: pricingMode y precio manual
           pricingMode,
           ...(pricingMode === 'manual' ? {
@@ -369,7 +379,7 @@ export function WalkInModal({
         await checkInGuest({
           establishmentId,
           reservationId: currentResId,
-          guestIds: isPrivate ? [finalGuestId, ...companionSlots.map(s => s.mode === 'existing' ? s.existingGuestId : s.validated ? 'new' : null).filter(Boolean) as string[]] : [finalGuestId],
+          guestIds: isPrivate ? [currentGuestId, ...currentCompanions] : [currentGuestId],
           roomId: selectedRoomObj.id,
           bedIds: effectiveBedIds,
           expectedCheckOutDate: checkOutDateStr,
@@ -396,6 +406,7 @@ export function WalkInModal({
       onError(msg)
     } finally {
       setSubmitting(false)
+      isSubmittingRef.current = false
     }
   }
 

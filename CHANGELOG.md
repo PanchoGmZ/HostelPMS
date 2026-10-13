@@ -1,5 +1,14 @@
 # Changelog — Pata y Perro PMS
 
+## v1.19.1
+Fecha: 2026-10-12
+
+- **Corrección Transaccional en Check-in y Walk-in (`checkInGuest`)**: Reorganización estricta de la transacción Firestore en dos fases (lecturas completas previas antes de cualquier escritura), resolviendo el error fatal `Firestore transactions require all reads to be executed before all writes`.
+- **Saneamiento de `allocations` en Pagos (`recordPayment`, `recordRefund`, `extendStay`)**: Eliminación de propiedades `undefined` en objetos de pago y saneamiento de registros históricos, corrigiendo el error `Cannot use undefined as a Firestore value (found in field payments.X.allocations)`.
+- **Cobro y Registro desde Folios y Dashboard (`PaymentModal`, `IntegratedPayment`, `FoliosPage`)**: Corrección del cálculo de saldo deudor negativo (`Math.max(0, -folio.balance)`), soporte para liquidación total y cobro parcial con input único en BOB, e integración directa con el endpoint real de backend capturando mensajes de error auténticos.
+- **Resiliencia y Reintento en Walk-in (`WalkInModal`)**: Conservación del ID de reserva y huéspedes creados si el check-in falla posteriormente, permitiendo reintentar el check-in con la misma reserva sin duplicar huéspedes ni bloquear camas innecesariamente.
+- **Prevención de Doble Envío**: Adición de guardas de referencia (`isSubmittingRef`) en modales de Check-in, Walk-in, Cobro y Extensión de Estadía.
+
 ## v1.19
 Fecha: 2026-10-08
 

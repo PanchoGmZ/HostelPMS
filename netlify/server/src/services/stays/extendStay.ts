@@ -205,22 +205,31 @@ export async function extendStayService(
 
         if (extensionAmount > 0) {
           const chargeId = db.collection('dummy').doc().id;
-          const updatedCharges = [
-            ...(folioData.charges || []),
-            {
-              id: chargeId,
-              type: 'lodging_extension',
-              description: `Hospedaje adicional · ${daysToBlock.length} noche(s)`,
-              quantity: daysToBlock.length,
-              unitPrice: extensionAmount / daysToBlock.length,
-              amount: extensionAmount,
-              status: 'pending',
-              productId: null,
-              // serviceDate = primera noche adicional (oldCheckOutLocal)
-              serviceDate: Timestamp.fromDate(oldCheckOutLocal),
-              createdAt: Timestamp.now(),
-            },
-          ];
+          const newCharge = {
+            id: chargeId,
+            type: 'lodging_extension',
+            description: `Hospedaje adicional · ${daysToBlock.length} noche(s)`,
+            quantity: daysToBlock.length,
+            unitPrice: extensionAmount / daysToBlock.length,
+            amount: extensionAmount,
+            status: 'pending',
+            productId: null,
+            // serviceDate = primera noche adicional (oldCheckOutLocal)
+            serviceDate: Timestamp.fromDate(oldCheckOutLocal),
+            createdAt: Timestamp.now(),
+          };
+
+          const sanitizedExistingCharges = (folioData.charges || []).map((c: any) => {
+            const clean: Record<string, any> = {};
+            for (const [k, v] of Object.entries(c)) {
+              if (v !== undefined) {
+                clean[k] = v;
+              }
+            }
+            return clean;
+          });
+
+          const updatedCharges = [...sanitizedExistingCharges, newCharge];
 
           const newTotalCharges = (folioData.totalCharges || 0) + extensionAmount;
           const newBalance = (folioData.totalPaid || 0) - newTotalCharges;
