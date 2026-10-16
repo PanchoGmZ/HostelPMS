@@ -61,11 +61,19 @@ export function CheckoutModal({
 
   const idempotencyKeyRef = useRef<string>(crypto.randomUUID())
 
-  // v1.17: Fecha real de checkout y pago inline
+  // v1.20: Fecha real de checkout — retroactivo si ya venció
   const expectedCheckOutStr = new Date(stay.expectedCheckOutDate.seconds * 1000).toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' })
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' })
-  const [actualCheckOutDate, setActualCheckOutDate] = useState(todayStr)
-  const isLate = actualCheckOutDate > expectedCheckOutStr
+  // Si la salida prevista ya pasó, el valor inicial es la fecha prevista (retroactivo)
+  // Si no venció aún, el valor inicial es hoy
+  const isOverdue = expectedCheckOutStr < todayStr
+  const [actualCheckOutDate, setActualCheckOutDate] = useState(
+    isOverdue ? expectedCheckOutStr : todayStr
+  )
+  // isLate: fecha elegida es POSTERIOR a hoy (futuro) — no tiene sentido para salida pasada
+  const isLate = actualCheckOutDate > todayStr
+  // isBeyondExpected: salida real es posterior a la prevista (extensión no registrada)
+  const isBeyondExpected = actualCheckOutDate > expectedCheckOutStr
 
   const [paymentData, setPaymentData] = useState<PaymentData | null>(null)
   const payCurrency = actualFolio?.currency ?? 'BOB'
@@ -85,7 +93,7 @@ export function CheckoutModal({
       return
     }
     if (isLate) {
-      setError(`La fecha es posterior a la salida prevista. Debes extender la estadía primero.`)
+      setError(`La fecha de salida no puede ser futura. Elige hoy (${todayStr}) o una fecha anterior.`)
       return
     }
 
@@ -196,13 +204,27 @@ export function CheckoutModal({
             />
           </div>
 
-          {isLate && (
+          {/* v1.20: aviso informativo para salida retroactiva */}
+          {isOverdue && !isBeyondExpected && (
+            <div className="stay-notice" style={{ marginBottom: '14px', padding: '12px', display: 'flex', gap: '10px', borderColor: 'var(--teal, #0d9488)' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0, color: 'var(--teal, #0d9488)' }} />
+              <div>
+                <strong>Salida retroactiva</strong>
+                <p style={{ margin: '4px 0 0', fontSize: '13px' }}>
+                  La estadía venció el {expectedCheckOutStr}. Ajusta la fecha real de salida si el huésped se fue antes o en esa fecha. Los cargos existentes no se modifican.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* v1.20: si el huésped sigue alojado más allá de la fecha prevista → ofrecer extender */}
+          {isBeyondExpected && (
             <div className="stay-notice critical" style={{ marginBottom: '14px', padding: '12px', display: 'flex', gap: '10px' }}>
               <AlertTriangle size={18} style={{ flexShrink: 0 }} />
               <div>
-                <strong>Noches adicionales detectadas</strong>
+                <strong>Noches adicionales sin registrar</strong>
                 <p style={{ margin: '4px 0 0', fontSize: '13px' }}>
-                  El huésped permaneció más tiempo del previsto. Debes procesar una Extensión de Estadía para generar los cargos correspondientes antes del check-out.
+                  La fecha elegida supera la salida prevista ({expectedCheckOutStr}). Si el huésped continuó alojado, extiende la estadía primero para regularizar las noches y sus cargos.
                 </p>
                 {onExtendStay && (
                   <button type="button" className="secondary-button compact-button" style={{ marginTop: '8px', background: 'var(--white)' }} onClick={onExtendStay}>
@@ -275,7 +297,7 @@ export function CheckoutModal({
             type="button"
             className="danger-button"
             onClick={handleConfirmCheckout}
-            disabled={submitting || (hasDebt && (!paymentData || paymentData.intent === 'none')) || isLate}
+            disabled={submitting || (hasDebt && (!paymentData || paymentData.intent === 'none')) || isLate || isBeyondExpected}
           >
             {submitting ? (
               <>

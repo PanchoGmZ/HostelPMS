@@ -56,12 +56,16 @@ export function ExtendStayModal({
     return null
   }, [folio])
 
+  const todayStr = toLocalDateString(new Date())
   const currentCheckOutStr = toLocalDateString(new Date(stay.expectedCheckOutDate.seconds * 1000))
+  // v1.20: si la estadía ya venció, permitir extensión retroactiva
+  const isOverdue = currentCheckOutStr < todayStr
   const minNewCheckOut = (() => {
     const d = new Date(`${currentCheckOutStr}T12:00:00.000-04:00`)
     d.setUTCDate(d.getUTCDate() + 1)
     return toLocalDateString(d)
   })()
+  // Para estadías vencidas, el mínimo real es al día siguiente del expected (puede ser pasado)
 
   const [newCheckOutDate, setNewCheckOutDate] = useState(minNewCheckOut)
   const [priceMode, setPriceMode] = useState<'auto' | 'manual'>(
@@ -169,7 +173,9 @@ export function ExtendStayModal({
       >
         <div className="modal-header" {...headerProps}>
           <div>
-            <span className="kicker" style={{ color: 'var(--teal, #0d9488)' }}>Estadía Activa</span>
+            <span className="kicker" style={{ color: 'var(--teal, #0d9488)' }}>
+              {isOverdue ? 'Estadía Vencida — Regularizar' : 'Estadía Activa'}
+            </span>
             <h2>Extender Estadía</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Cerrar"><X size={19} /></button>
@@ -179,6 +185,21 @@ export function ExtendStayModal({
           <div className="form-error">
             <AlertTriangle size={16} />
             <span>{formError}</span>
+          </div>
+        )}
+
+        {/* v1.20: Aviso si es regularización retroactiva */}
+        {isOverdue && (
+          <div className="stay-notice" style={{ marginBottom: '16px', borderColor: 'var(--coral)', background: 'var(--coral-bg, #fff5f5)' }}>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0, color: 'var(--coral)' }} />
+              <div>
+                <strong style={{ color: 'var(--coral)' }}>Estadía vencida — Regularización</strong>
+                <p style={{ margin: '4px 0 0', fontSize: '13px' }}>
+                  La salida prevista fue el {formatDate(stay.expectedCheckOutDate)}. Selecciona la nueva fecha de salida real para regularizar las noches adicionales y generar los cargos correspondientes.
+                </p>
+              </div>
+            </div>
           </div>
         )}
 

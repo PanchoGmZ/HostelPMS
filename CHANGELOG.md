@@ -1,7 +1,19 @@
 # Changelog — Pata y Perro PMS
 
 ## v1.20
-Fecha: 2026-10-13
+Fecha: 2026-10-16
+
+### Fase 5 — Check-out Retroactivo y Estadías Vencidas
+- **Check-out Retroactivo**: El modal de Check-out ahora permite registrar la salida real incluso si ocurrió días atrás. Fecha inicial automática: si la estadía ya venció, se pre-carga la fecha prevista de salida (no la de hoy), facilitando la operación correcta.
+- **Sin bloqueo por deuda ni por fecha vencida**: El backend ya no rechaza el check-out cuando el folio tiene saldo pendiente (el cobro se gestiona en el frontend mediante `IntegratedPayment`). La fecha elegida puede ser retroactiva sin necesidad de extender primero.
+- **Distinción clara de casos**: El modal distingue entre (a) salida retroactiva dentro del rango previsto (aviso informativo), y (b) fecha elegida posterior a la prevista (ofrece Extender estadía).
+- **Extensión Retroactiva (Regularización)**: El modal `ExtendStayModal` ahora acepta estadías vencidas, mostrando un aviso de regularización. El mínimo de nueva fecha es el día siguiente al previsto (puede ser en el pasado).
+- **Estadías Vencidas Visibles**: Las estadías vencidas se destacan con badge rojo en Recepción, Estadías y el panel `DashboardStaysPanel`, con acciones directas de Cobrar, Extender y Registrar salida atrasada.
+- **Panel de Salidas ampliado**: `DeparturesPanel` ahora muestra estadías con salida vencida (no solo las de hoy), con badge "Vencida" por fila.
+- **`DashboardStaysPanel` mejorado**: Nuevo filtro "Vencidas", contador de estadías vencidas, y botones de acción directa (Extender / Check-out) para estadías vencidas.
+- **`GuestStayDrawer` mejorado**: Badge y kicker de "Estadía Vencida" para estadías activas con fecha superada; botón "Extender Estadía ⚠" prominente.
+- **Preservación de cargos históricos**: No se crean ni eliminan cargos automáticamente por registrar salida tardía. Cualquier ajuste es explícito mediante Extensión.
+- **Disponibilidad y summaries**: El checkout retroactivo libera la disponibilidad y regenera daily summaries para las fechas afectadas, sin tocar ocupaciones de otros huéspedes.
 
 ### Fase 2 — Prevención de Reservas Duplicadas y Cambio de Cama
 - **Idempotencia de Creación**: Clave `idempotencyKey` (UUID por sesión) que impide la creación de reservas duplicadas ante doble clic o reintentos de red.

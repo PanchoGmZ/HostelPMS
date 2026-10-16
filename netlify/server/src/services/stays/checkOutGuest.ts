@@ -7,7 +7,8 @@ import { processDailySummaryForEstablishment } from '../reports/generateDailySum
 export interface CheckOutGuestPayload {
   establishmentId: string;
   stayId: string;
-  actualCheckOut?: string;
+  actualCheckOut?: string;   // legacy field name
+  actualCheckOutDate?: string; // v1.20: new field name from frontend
   notes?: string;
 }
 
@@ -23,7 +24,9 @@ export async function checkOutGuestService(
   getFirebaseAdmin();
   const db = getFirestore();
 
-  const { establishmentId, stayId, actualCheckOut } = payload;
+  const { establishmentId, stayId, actualCheckOut, actualCheckOutDate } = payload;
+  // Support both field names: actualCheckOutDate (from frontend v1.17+) and actualCheckOut (legacy)
+  const checkOutStr = actualCheckOutDate || actualCheckOut;
 
   if (!establishmentId || !stayId) {
     throw new ReservationError('Parámetros requeridos faltantes.', 400);
@@ -38,8 +41,8 @@ export async function checkOutGuestService(
 
   // Parse actualCheckOut if provided, otherwise use current date
   let checkOutDate: Date;
-  if (actualCheckOut) {
-    checkOutDate = new Date(`${actualCheckOut}T12:00:00.000-04:00`); 
+  if (checkOutStr) {
+    checkOutDate = new Date(`${checkOutStr}T12:00:00.000-04:00`); 
     if (Number.isNaN(checkOutDate.getTime())) {
       throw new ReservationError('Fecha de checkout inválida.', 400);
     }
@@ -82,14 +85,11 @@ export async function checkOutGuestService(
         throw new ReservationError('La estadía ya fue cerrada.', 409);
       }
 
+      // v1.20: El saldo pendiente se cobra en el frontend (IntegratedPayment).
+      // El backend no bloquea el checkout por deuda — el folio puede cerrarse con balance positivo.
       const foliosSnap = await transaction.get(estRef.collection('folios').where('stayId', '==', stayId).limit(1));
       if (foliosSnap.empty) {
         throw new ReservationError('No existe folio para esta estadía.', 500);
-      }
-
-      const folioData = foliosSnap.docs[0].data();
-      if (folioData.balance < 0) {
-        throw new ReservationError(`El folio tiene deuda pendiente: ${Math.abs(folioData.balance)}. Debe completarse el pago antes del check-out.`, 400);
       }
 
       const bedIds: string[] = stay.bedIds || [];

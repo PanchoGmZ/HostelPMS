@@ -75,6 +75,13 @@ export function GuestStayDrawer({
   const hasDebt = balance > 0
   const bedDisplayName = bed?.label || (stay.bedIds?.[0] ? `Cama ${stay.bedIds[0]}` : 'Cama asignada')
 
+  // v1.20: detectar estadía vencida
+  const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  const expectedCheckOutStr = stay.expectedCheckOutDate
+    ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(stay.expectedCheckOutDate.seconds * 1000))
+    : ''
+  const isOverdue = stay.status === 'active' && expectedCheckOutStr !== '' && expectedCheckOutStr < todayStr
+
   return (
     <div className="reception-drawer-backdrop" onClick={onClose} role="presentation">
       <aside
@@ -87,7 +94,7 @@ export function GuestStayDrawer({
         {/* Drawer Header */}
         <div className="drawer-header">
           <div>
-            <span className="kicker">Huésped Activo</span>
+            <span className="kicker">{isOverdue ? '⚠ Estadía Vencida' : 'Huésped Activo'}</span>
             <h2 id="drawer-guest-name" className="drawer-title">
               {guestFullName}
             </h2>
@@ -132,7 +139,13 @@ export function GuestStayDrawer({
               <span className="info-label">
                 <ShieldCheck size={16} /> Estado
               </span>
-              <span className="status-badge available">Estadía activa</span>
+              {isOverdue ? (
+                <span className="status-badge" style={{ background: '#fff5f5', color: '#f43f5e', border: '1px solid #f43f5e', fontWeight: 700 }}>
+                  ⚠ Vencida desde {expectedCheckOutStr}
+                </span>
+              ) : (
+                <span className="status-badge available">Estadía activa</span>
+              )}
             </div>
           </div>
 
@@ -314,12 +327,12 @@ export function GuestStayDrawer({
           {onExtendStay && (
             <button
               type="button"
-              className="secondary-button drawer-action-btn"
+              className={isOverdue ? 'danger-button drawer-action-btn' : 'secondary-button drawer-action-btn'}
               onClick={() => onExtendStay(stay, folio)}
               style={{ flex: '1 1 calc(50% - 4px)' }}
             >
               <Calendar size={15} />
-              <span>Extender</span>
+              <span>{isOverdue ? 'Extender Estadía ⚠' : 'Extender'}</span>
             </button>
           )}
 

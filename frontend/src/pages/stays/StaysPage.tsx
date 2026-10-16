@@ -130,6 +130,11 @@ export function StaysPage() {
 
   const activeStaysCount = stays.filter((s) => s.status === 'active').length
 
+  // v1.20: today string for overdue detection
+  const todayStr = useMemo(() => {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  }, [])
+
   if (!establishmentId) {
     return (
       <div className="empty-state">
@@ -265,9 +270,15 @@ export function StaysPage() {
             const tOut = outDateSource?.seconds ? outDateSource.seconds * 1000 : 0
             const diffDays = tIn && tOut ? Math.max(1, Math.ceil((tOut - tIn) / (1000 * 3600 * 24))) : 1
 
+            // v1.20: Detectar estadía vencida
+            const expectedCheckOutForOverdue = stay.status === 'active' && stay.expectedCheckOutDate
+              ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(stay.expectedCheckOutDate.seconds * 1000))
+              : ''
+            const isOverdue = stay.status === 'active' && expectedCheckOutForOverdue !== '' && expectedCheckOutForOverdue < todayStr
+
             return (
               <article
-                className={`stay-item-card ${stay.status !== 'active' ? 'is-inactive-card' : ''}`}
+                className={`stay-item-card ${stay.status !== 'active' ? 'is-inactive-card' : ''} ${isOverdue ? 'is-overdue-card' : ''}`}
                 key={stay.id}
               >
                 {/* Izquierda: Huésped info */}
@@ -288,6 +299,11 @@ export function StaysPage() {
                       >
                         <span className="dot" /> {stay.status === 'active' ? 'Activa' : 'Finalizada'}
                       </span>
+                      {isOverdue && (
+                        <span className="stay-status-pill" style={{ background: '#fff5f5', color: '#f43f5e', border: '1px solid #f43f5e' }}>
+                          ⚠ Vencida {expectedCheckOutForOverdue}
+                        </span>
+                      )}
                     </div>
                     <div className="stay-guest-subinfo">
                       <span className="room-name">

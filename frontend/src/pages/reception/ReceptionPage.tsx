@@ -193,13 +193,13 @@ export function ReceptionPage() {
     })
   }, [reservations, todayStr])
 
-  // Today's departures (Active stays expected to check out today)
+  // Today's departures + overdue stays (active stays with expectedCheckOut <= today)
   const todayDepartures = useMemo(() => {
     return stays.filter((s) => {
       if (s.status !== 'active') return false
       if (!s.expectedCheckOutDate) return false
       const dateStr = dateFromSeconds(s.expectedCheckOutDate.seconds)
-      return dateStr === todayStr
+      return dateStr <= todayStr  // includes overdue
     })
   }, [stays, todayStr])
 
@@ -369,6 +369,11 @@ export function ReceptionPage() {
             rooms={rooms}
             onViewDetails={(stay) => setDrawerStay(stay)}
             onRecordPayment={(stay, folio) => setPaymentData({ stay, folio })}
+            onExtendStay={(stay, folio) => setExtendStayData({ stay, folio })}
+            onCheckout={(stay, folio) => {
+              const g = guests.find((item) => stay.guestIds?.includes(item.id))
+              setCheckoutData({ stay, guest: g, folio })
+            }}
           />
         </div>
 

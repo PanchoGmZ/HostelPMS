@@ -131,18 +131,24 @@ interface DeparturesPanelProps {
   guests: Guest[]
   rooms: Room[]
   folios: Folio[]
+  todayStr?: string
   onQuickCheckout: (stay: Stay) => void
 }
 
-export function DeparturesPanel({ todayDepartures, guests, rooms, folios, onQuickCheckout }: DeparturesPanelProps) {
+export function DeparturesPanel({ todayDepartures, guests, rooms, folios, todayStr, onQuickCheckout }: DeparturesPanelProps) {
+  const today = todayStr || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/La_Paz', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
+  const overdueCount = todayDepartures.filter(s => {
+    const d = s.expectedCheckOutDate ? new Date(s.expectedCheckOutDate.seconds * 1000).toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' }) : ''
+    return d < today
+  }).length
   return (
     <div className="dashboard-panel">
       <div className="panel-header">
         <div className="panel-title">
           <span className="dot dot-blue"></span>
-          <h3>Salidas de hoy</h3>
+          <h3>{overdueCount > 0 ? 'Salidas de hoy / Vencidas' : 'Salidas de hoy'}</h3>
         </div>
-        <span className="panel-count">{todayDepartures.length} salidas</span>
+        <span className="panel-count">{todayDepartures.length} salidas{overdueCount > 0 ? ` (${overdueCount} vencidas)` : ''}</span>
       </div>
       <div className="panel-content">
         {todayDepartures.length === 0 ? (
@@ -157,6 +163,10 @@ export function DeparturesPanel({ todayDepartures, guests, rooms, folios, onQuic
             const folio = folios.find((f) => f.stayId === stay.id)
             const balance = folio?.balance ?? 0
             const hasDebt = balance > 0
+            const expectedStr = stay.expectedCheckOutDate
+              ? new Date(stay.expectedCheckOutDate.seconds * 1000).toLocaleDateString('en-CA', { timeZone: 'America/La_Paz' })
+              : ''
+            const isOverdue = expectedStr < today
             
             const locationText = isPrivate 
               ? `${roomName} completa (${stay.guestCount || 1} huéspedes)`
@@ -166,11 +176,16 @@ export function DeparturesPanel({ todayDepartures, guests, rooms, folios, onQuic
               <div key={stay.id} className="panel-card">
                 <div className="card-left">
                   <div className="card-info" style={{ marginLeft: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <h4 className="card-guest-name">{isPrivate ? `Titular: ${guestName}` : guestName}</h4>
                       <span className={`status-badge ${hasDebt ? 'debt' : 'available'}`}>
                         {hasDebt ? `Debe ${balance.toFixed(2)} BOB` : `Al día (${balance.toFixed(2)} BOB)`}
                       </span>
+                      {isOverdue && (
+                        <span style={{ fontSize: '11px', fontWeight: 700, padding: '1px 6px', borderRadius: '8px', background: '#fff5f5', color: '#f43f5e', border: '1px solid #f43f5e', whiteSpace: 'nowrap' }}>
+                          ⚠ Vencida {expectedStr}
+                        </span>
+                      )}
                     </div>
                     <p className="card-location">{locationText} · Límite 11:00 AM</p>
                   </div>
